@@ -63,9 +63,7 @@ client.on("messageCreate", async (msg) => {
 
   const embed = new EmbedBuilder()
     .setTitle("💎 Система баллов")
-    .setDescription(
-      "Чтобы заработать баллы — нажми кнопку ниже\n\nИспользуй их в магазине или смотри баланс"
-    )
+    .setDescription("Нажми кнопку ниже чтобы заработать или открыть магазин")
     .setImage(IMAGE);
 
   const row = new ActionRowBuilder().addComponents(
@@ -116,28 +114,20 @@ client.on("interactionCreate", async (i) => {
     });
   }
 
-  /* ===== ВЫБОР ЗАДАНИЯ ===== */
+  /* ===== МОДАЛКА ===== */
   if (i.customId === "task_select") {
 
     const type = i.values[0];
 
-    const tips = {
-      arena: "Займи ТОП-1 на арене",
-      capt: "Сделай скрин стоя на капте",
-      mp: "Скрин участия/победы на МП",
-      tainik: "Фото с найденным тайником",
-      track: "Фото финиша на трассе"
-    };
-
     const modal = new ModalBuilder()
       .setCustomId(`modal_${type}`)
-      .setTitle(tips[type]);
+      .setTitle("Отправить заявку");
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("link")
-          .setLabel("Ссылка на скрин")
+          .setLabel("Ссылка на фото/скрин")
           .setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
@@ -151,7 +141,7 @@ client.on("interactionCreate", async (i) => {
     return i.showModal(modal);
   }
 
-  /* ===== МОДАЛКА ===== */
+  /* ===== ОТПРАВКА ===== */
   if (i.isModalSubmit()) {
 
     const type = i.customId.replace("modal_", "");
@@ -193,11 +183,6 @@ client.on("interactionCreate", async (i) => {
       new ButtonBuilder()
         .setCustomId(`block_${i.user.id}`)
         .setLabel("Блок")
-        .setStyle(ButtonStyle.Secondary),
-
-      new ButtonBuilder()
-        .setCustomId(`unblock_${i.user.id}`)
-        .setLabel("Разблок")
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -214,37 +199,56 @@ client.on("interactionCreate", async (i) => {
     addPoints(id, Number(reward));
 
     const user = await client.users.fetch(id);
-    user.send(`✅ +${reward} баллов начислено!`);
+    user.send(`✅ Заявка принята +${reward} 💎`);
 
     return i.update({ content: "✅ Принято", components: [] });
+  }
+
+  /* ===== ОТКЛОНИТЬ (ПОЧИНИЛИ) ===== */
+  if (i.customId.startsWith("reject_")) {
+    const id = i.customId.split("_")[1];
+
+    const user = await client.users.fetch(id);
+    user.send("❌ Ваша заявка была отклонена модератором");
+
+    return i.update({ content: "❌ Отклонено", components: [] });
+  }
+
+  /* ===== БЛОК ===== */
+  if (i.customId.startsWith("block_")) {
+    const id = i.customId.split("_")[1];
+
+    if (!db.blocked.includes(id)) db.blocked.push(id);
+    save();
+
+    return i.update({ content: "🚫 Заблокирован", components: [] });
   }
 
   /* ===== БАЛАНС ===== */
   if (i.customId === "balance") {
     return i.reply({
-      content: `💎 Баланс: ${getPoints(i.user.id)} баллов`,
+      content: `💎 Баланс: ${getPoints(i.user.id)}`,
       ephemeral: true
     });
   }
 
   /* ===== МАГАЗИН ===== */
   if (i.customId === "shop") {
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("remove_warn")
-        .setLabel("Снять варн (70 💎)")
-        .setStyle(ButtonStyle.Primary)
-    );
-
     return i.reply({
-      content: "🛒 Магазин",
-      components: [row],
+      content: "🛒 Магазин\nСнять варн — 70 💎",
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("remove_warn")
+            .setLabel("Снять варн")
+            .setStyle(ButtonStyle.Primary)
+        )
+      ],
       ephemeral: true
     });
   }
 
-  /* ===== СНЯТЬ ВАРН ===== */
+  /* ===== ПОКУПКА ===== */
   if (i.customId === "remove_warn") {
 
     if (getPoints(i.user.id) < 70)
@@ -253,13 +257,11 @@ client.on("interactionCreate", async (i) => {
     addPoints(i.user.id, -70);
 
     return i.reply({
-      content: "✅ Варн снят, 70 баллов списано",
+      content: "✅ Варн снят, баллы списаны",
       ephemeral: true
     });
   }
 
 });
-
-/* ========= LOGIN ========= */
 
 client.login(process.env.TOKEN);
