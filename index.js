@@ -13,17 +13,29 @@ const {
 
 const fs = require("fs");
 
+/* ================= НАСТРОЙКИ ================= */
+
+const VERIFY_CHANNEL = "1469477344161959957";
+
+const IMAGE =
+  "https://cdn.discordapp.com/attachments/737990746086441041/1469395625849257994/3330ded1-da51-47f9-a7d7-dee6d1bdc918.png";
+
+/* ================= CLIENT ================= */
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent, // ⭐ обязательно
     GatewayIntentBits.DirectMessages
   ]
 });
 
-const VERIFY_CHANNEL = "1469477344161959957";
-const IMAGE =
-  "https://cdn.discordapp.com/attachments/737990746086441041/1469395625849257994/3330ded1-da51-47f9-a7d7-dee6d1bdc918.png";
+client.once("ready", () => {
+  console.log(`✅ Бот запущен как ${client.user.tag}`);
+});
+
+/* ================= БАЗА ================= */
 
 let db = { points: {}, blocked: [] };
 
@@ -43,13 +55,14 @@ function getPoints(id) {
   return db.points[id] || 0;
 }
 
-/* ================= MENU ================= */
+/* ================= !menu ================= */
 
 client.on("messageCreate", async (msg) => {
+  if (msg.author.bot) return;
   if (msg.content !== "!menu") return;
 
   const embed = new EmbedBuilder()
-    .setTitle("💎 Система балов")
+    .setTitle("💎 Система баллов")
     .setDescription(
       "Чтобы заработать баллы — нажми кнопку ниже\n\nИспользуй их в магазине или смотри баланс"
     )
@@ -81,7 +94,7 @@ client.on("messageCreate", async (msg) => {
 
 client.on("interactionCreate", async (i) => {
 
-  /* ===== Заработать (СПИСОК) ===== */
+  /* ===== Заработать ===== */
   if (i.customId === "earn") {
 
     if (db.blocked.includes(i.user.id))
@@ -91,15 +104,16 @@ client.on("interactionCreate", async (i) => {
       .setCustomId("task_select")
       .setPlaceholder("Выберите нужное")
       .addOptions([
-        { label: "Арена 💎", value: "arena" },
-        { label: "Гонка 💎", value: "race" },
-        { label: "Капт 💎", value: "capt" },
-        { label: "Тайник 💎", value: "tainik" }
+        { label: "Арена 💎 1", value: "arena" },
+        { label: "Гонка 💎 2", value: "race" },
+        { label: "Капт 💎 3", value: "capt" },
+        { label: "Тайник 💎 2", value: "tainik" }
       ]);
 
-    const row = new ActionRowBuilder().addComponents(menu);
-
-    return i.reply({ components: [row], ephemeral: true });
+    return i.reply({
+      components: [new ActionRowBuilder().addComponents(menu)],
+      ephemeral: true
+    });
   }
 
   /* ===== Выбор задания ===== */
@@ -110,30 +124,28 @@ client.on("interactionCreate", async (i) => {
       .setCustomId(`modal_${type}`)
       .setTitle("Отправить заявку");
 
-    const link = new TextInputBuilder()
-      .setCustomId("link")
-      .setLabel("Ссылка на скрин/фото")
-      .setStyle(TextInputStyle.Short);
-
-    const nick = new TextInputBuilder()
-      .setCustomId("nick")
-      .setLabel("Ваш ник")
-      .setStyle(TextInputStyle.Short);
-
     modal.addComponents(
-      new ActionRowBuilder().addComponents(link),
-      new ActionRowBuilder().addComponents(nick)
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("link")
+          .setLabel("Ссылка на скрин")
+          .setStyle(TextInputStyle.Short)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("nick")
+          .setLabel("Ваш ник")
+          .setStyle(TextInputStyle.Short)
+      )
     );
 
     return i.showModal(modal);
   }
 
-  /* ===== Отправка заявки ===== */
+  /* ===== Модалка ===== */
   if (i.isModalSubmit()) {
 
     const type = i.customId.replace("modal_", "");
-    const link = i.fields.getTextInputValue("link");
-    const nick = i.fields.getTextInputValue("nick");
 
     const rewards = {
       arena: 1,
@@ -144,6 +156,9 @@ client.on("interactionCreate", async (i) => {
 
     const reward = rewards[type] || 1;
 
+    const link = i.fields.getTextInputValue("link");
+    const nick = i.fields.getTextInputValue("nick");
+
     const embed = new EmbedBuilder()
       .setTitle("📩 Новая заявка")
       .setDescription(
@@ -152,8 +167,7 @@ client.on("interactionCreate", async (i) => {
         `**Активность:** ${type}\n` +
         `**Ссылка:** ${link}\n\n` +
         `**Награда:** 💎 ${reward}`
-      )
-      .setColor("#2b2d31");
+      );
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -168,7 +182,12 @@ client.on("interactionCreate", async (i) => {
 
       new ButtonBuilder()
         .setCustomId(`block_${i.user.id}`)
-        .setLabel("Заблокировать")
+        .setLabel("Блок")
+        .setStyle(ButtonStyle.Secondary),
+
+      new ButtonBuilder()
+        .setCustomId(`unblock_${i.user.id}`)
+        .setLabel("Разблок")
         .setStyle(ButtonStyle.Secondary)
     );
 
@@ -192,7 +211,33 @@ client.on("interactionCreate", async (i) => {
 
   /* ===== Отклонить ===== */
   if (i.customId.startsWith("reject_")) {
-    return i.reply({ content: "Напиши причину отклонения", ephemeral: true });
+
+    const id = i.customId.split("_")[1];
+
+    const modal = new ModalBuilder()
+      .setCustomId(`reason_${id}`)
+      .setTitle("Причина отклонения");
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("reason")
+          .setLabel("Причина")
+          .setStyle(TextInputStyle.Paragraph)
+      )
+    );
+
+    return i.showModal(modal);
+  }
+
+  if (i.customId.startsWith("reason_")) {
+    const id = i.customId.split("_")[1];
+    const reason = i.fields.getTextInputValue("reason");
+
+    const user = await client.users.fetch(id);
+    user.send(`❌ Заявка отклонена\nПричина: ${reason}`);
+
+    return i.reply({ content: "Отклонено", ephemeral: true });
   }
 
   /* ===== Блок ===== */
@@ -202,47 +247,37 @@ client.on("interactionCreate", async (i) => {
     if (!db.blocked.includes(id)) db.blocked.push(id);
     save();
 
-    const user = await client.users.fetch(id);
-    user.send("🚫 Вы были заблокированы");
-
     return i.update({ content: "🚫 Заблокирован", components: [] });
+  }
+
+  /* ===== Разблок ===== */
+  if (i.customId.startsWith("unblock_")) {
+    const id = i.customId.split("_")[1];
+
+    db.blocked = db.blocked.filter(x => x !== id);
+    save();
+
+    return i.update({ content: "✅ Разблокирован", components: [] });
   }
 
   /* ===== Баланс ===== */
   if (i.customId === "balance") {
     return i.reply({
-      content: `💎 У тебя ${getPoints(i.user.id)} баллов`,
+      content: `💎 Баланс: ${getPoints(i.user.id)} баллов`,
       ephemeral: true
     });
   }
 
   /* ===== Магазин ===== */
   if (i.customId === "shop") {
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("remove_warn")
-        .setLabel("Снять варн (70 💎)")
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    return i.reply({ content: "🛒 Магазин", components: [row], ephemeral: true });
-  }
-
-  /* ===== Купить снятие варна ===== */
-  if (i.customId === "remove_warn") {
-
-    if (getPoints(i.user.id) < 70)
-      return i.reply({ content: "❌ Недостаточно баллов", ephemeral: true });
-
-    addPoints(i.user.id, -70);
-
     return i.reply({
-      content: "✅ Варн снят (баллы списаны)",
+      content: "🛒 Магазин скоро будет 😉",
       ephemeral: true
     });
   }
 
 });
+
+/* ================= LOGIN ================= */
 
 client.login(process.env.TOKEN);
