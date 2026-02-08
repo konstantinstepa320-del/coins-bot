@@ -26,6 +26,7 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 
 const LOG_CHANNEL = "1469477344161959957";
+
 const IMAGE = "https://cdn.discordapp.com/attachments/737990746086441041/1469395625849257994/3330ded1-da51-47f9-a7d7-dee6d1bdc918.png";
 
 
@@ -33,27 +34,28 @@ const IMAGE = "https://cdn.discordapp.com/attachments/737990746086441041/1469395
 const db = new sqlite3.Database("./db.sqlite");
 
 db.run(`CREATE TABLE IF NOT EXISTS users(
-  id TEXT PRIMARY KEY,
-  coins INTEGER DEFAULT 0
+ id TEXT PRIMARY KEY,
+ coins INTEGER DEFAULT 0
 )`);
 
 const addCoins=(id,a)=>db.run(`INSERT INTO users VALUES(?,?) ON CONFLICT(id) DO UPDATE SET coins=coins+?`,[id,a,a]);
 const removeCoins=(id,a)=>db.run(`UPDATE users SET coins=coins-? WHERE id=?`,[a,id]);
 const getCoins=id=>new Promise(r=>db.get(`SELECT coins FROM users WHERE id=?`,[id],(e,row)=>r(row?.coins||0)));
 
-const rewards = {
-  capt:3,
-  race:2,
-  mp:2,
-  arena:1,
-  stash:2
+const rewards={
+ capt:3,
+ race:2,
+ mp:2,
+ arena:1,
+ stash:2
 };
+
 
 // ===== READY =====
 client.once("ready",()=>console.log("✅ Бот онлайн"));
 
 
-// ===== МЕНЮ =====
+// ===== ГЛАВНОЕ МЕНЮ =====
 client.on("messageCreate", async msg=>{
   if(msg.author.bot) return;
 
@@ -64,10 +66,21 @@ client.on("messageCreate", async msg=>{
       .setDescription("💎 **Система баллов**\nЧтобы заработать баллы — нажмите кнопку ниже");
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("earn").setLabel("🎯 Заработать").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("shop").setLabel("🛒 Магазин").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("balance").setLabel("💰 Баланс").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("warn").setLabel("⚠ Снять варн").setStyle(ButtonStyle.Danger)
+      new ButtonBuilder()
+        .setCustomId("earn")
+        .setLabel("Маккоин")
+        .setEmoji("🪙")
+        .setStyle(ButtonStyle.Primary),
+
+      new ButtonBuilder()
+        .setCustomId("shop")
+        .setLabel("Магазин")
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId("balance")
+        .setLabel("Баланс")
+        .setStyle(ButtonStyle.Secondary)
     );
 
     msg.channel.send({embeds:[embed],components:[row]});
@@ -80,10 +93,14 @@ client.on(Events.InteractionCreate, async i=>{
 
   // ===== Баланс =====
   if(i.isButton() && i.customId==="balance"){
-    return i.reply({content:`💰 У тебя ${await getCoins(i.user.id)} баллов`,ephemeral:true});
+    return i.reply({
+      content:`💰 У тебя ${await getCoins(i.user.id)} баллов`,
+      ephemeral:true
+    });
   }
 
-  // ===== Магазин =====
+
+  // ===== МАГАЗИН =====
   if(i.isButton() && i.customId==="shop"){
 
     const menu = new StringSelectMenuBuilder()
@@ -93,12 +110,14 @@ client.on(Events.InteractionCreate, async i=>{
         {label:"Снять варн — 70 баллов", value:"warn"}
       ]);
 
-    return i.reply({components:[new ActionRowBuilder().addComponents(menu)],ephemeral:true});
+    return i.reply({
+      components:[new ActionRowBuilder().addComponents(menu)],
+      ephemeral:true
+    });
   }
 
-  // покупка
   if(i.isStringSelectMenu() && i.customId==="shop_select"){
-    const coins = await getCoins(i.user.id);
+    const coins=await getCoins(i.user.id);
 
     if(coins<70)
       return i.reply({content:"❌ Недостаточно баллов",ephemeral:true});
@@ -107,24 +126,29 @@ client.on(Events.InteractionCreate, async i=>{
     return i.reply({content:"✅ Варн снят (-70)",ephemeral:true});
   }
 
-  // ===== Заработать =====
+
+  // ===== ЗАРАБОТАТЬ =====
   if(i.isButton() && i.customId==="earn"){
 
     const menu = new StringSelectMenuBuilder()
       .setCustomId("act")
       .setPlaceholder("Выбери активность")
       .addOptions([
-        {label:"Капт — 3", value:"capt"},
-        {label:"Трасса — 2", value:"race"},
-        {label:"МП — 2", value:"mp"},
-        {label:"Арена — 1", value:"arena"},
-        {label:"Тайник — 2", value:"stash"}
+        {label:"Капт — 3 ✨", value:"capt"},
+        {label:"Трасса — 2 ✨", value:"race"},
+        {label:"МП — 2 ✨", value:"mp"},
+        {label:"Арена — 1 ✨", value:"arena"},
+        {label:"Тайник — 2 ✨", value:"stash"}
       ]);
 
-    return i.reply({components:[new ActionRowBuilder().addComponents(menu)],ephemeral:true});
+    return i.reply({
+      components:[new ActionRowBuilder().addComponents(menu)],
+      ephemeral:true
+    });
   }
 
-  // форма
+
+  // ===== ФОРМА =====
   if(i.isStringSelectMenu() && i.customId==="act"){
     const type=i.values[0];
 
@@ -134,17 +158,24 @@ client.on(Events.InteractionCreate, async i=>{
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("l").setLabel("Ссылка").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("l")
+          .setLabel("Ссылка")
+          .setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("n").setLabel("Ник").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("n")
+          .setLabel("Ник")
+          .setStyle(TextInputStyle.Short)
       )
     );
 
     return i.showModal(modal);
   }
 
-  // отправка заявки
+
+  // ===== ОТПРАВКА В ЛОГ =====
   if(i.isModalSubmit()){
 
     const type=i.customId.split("_")[1];
@@ -153,18 +184,26 @@ client.on(Events.InteractionCreate, async i=>{
     const log=await client.channels.fetch(LOG_CHANNEL);
 
     const row=new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`ok_${i.user.id}_${reward}`).setLabel("Принять").setStyle(ButtonStyle.Success)
+      new ButtonBuilder()
+        .setCustomId(`ok_${i.user.id}_${reward}`)
+        .setLabel("Принять")
+        .setStyle(ButtonStyle.Success)
     );
 
     log.send({
-      content:`👤 ${i.user.tag}\n🎮 ${type}\n🔗 ${i.fields.getTextInputValue("l")}\n📝 ${i.fields.getTextInputValue("n")}\n💰 +${reward}`,
+      content:`👤 ${i.user.tag}
+🎮 ${type}
+🔗 ${i.fields.getTextInputValue("l")}
+📝 ${i.fields.getTextInputValue("n")}
+🪙 +${reward}`,
       components:[row]
     });
 
     return i.reply({content:"✅ Заявка отправлена",ephemeral:true});
   }
 
-  // принять
+
+  // ===== ПРИНЯТЬ =====
   if(i.isButton() && i.customId.startsWith("ok_")){
 
     const [,uid,reward]=i.customId.split("_");
@@ -172,7 +211,7 @@ client.on(Events.InteractionCreate, async i=>{
     addCoins(uid,+reward);
 
     const user=await client.users.fetch(uid);
-    user.send(`🎉 Вы получили ${reward} баллов`);
+    user.send(`🪙 Вам начислено ${reward} маккоинов`);
 
     i.update({content:"✅ Начислено",components:[]});
   }
