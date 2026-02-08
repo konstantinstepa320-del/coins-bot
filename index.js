@@ -24,12 +24,11 @@ const client = new Client({
 });
 
 const TOKEN = process.env.TOKEN;
-
 const LOG_CHANNEL = "1469477344161959957";
 const IMAGE = "https://cdn.discordapp.com/attachments/737990746086441041/1469395625849257994/3330ded1-da51-47f9-a7d7-dee6d1bdc918.png";
 
 
-// ===== БАЗА =====
+// ================= БАЗА =================
 const db = new sqlite3.Database("./db.sqlite");
 
 db.run(`
@@ -54,21 +53,21 @@ const rewards={
 };
 
 
-// ===== READY =====
+// ================= READY =================
 client.once("ready",()=>console.log("✅ Бот онлайн"));
 
 
-// ===== ГЛАВНОЕ МЕНЮ =====
+// ================= МЕНЮ =================
 client.on("messageCreate", async msg=>{
   if(msg.author.bot) return;
 
   if(msg.content==="!menu"){
 
-    const embed = new EmbedBuilder()
+    const embed=new EmbedBuilder()
       .setImage(IMAGE)
       .setDescription("💎 **Система баллов**\nЧтобы заработать баллы — нажмите кнопку ниже");
 
-    const row = new ActionRowBuilder().addComponents(
+    const row=new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("earn").setLabel("Маккоин").setEmoji("🪙").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("shop").setLabel("Магазин").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId("balance").setLabel("Баланс").setStyle(ButtonStyle.Secondary)
@@ -79,13 +78,13 @@ client.on("messageCreate", async msg=>{
 });
 
 
-// ===== ИНТЕРАКЦИИ =====
+// ================= ИНТЕРАКЦИИ =================
 client.on(Events.InteractionCreate, async i=>{
 
   // ===== Баланс =====
   if(i.isButton() && i.customId==="balance"){
     const u=await getUser(i.user.id);
-    return i.reply({content:`💰 У тебя ${u.coins} баллов`,ephemeral:true});
+    return i.reply({content:`🪙 Баланс: ${u.coins}`,ephemeral:true});
   }
 
   // ===== Магазин =====
@@ -99,17 +98,15 @@ client.on(Events.InteractionCreate, async i=>{
 
   if(i.isStringSelectMenu() && i.customId==="shop_select"){
     const u=await getUser(i.user.id);
-    if(u.coins<70) return i.reply({content:"❌ Мало баллов",ephemeral:true});
+    if(u.coins<70) return i.reply({content:"❌ Недостаточно баллов",ephemeral:true});
     removeCoins(i.user.id,70);
     return i.reply({content:"✅ Варн снят (-70)",ephemeral:true});
   }
 
   // ===== Заработать =====
   if(i.isButton() && i.customId==="earn"){
-
     const u=await getUser(i.user.id);
-    if(u.blocked)
-      return i.reply({content:"🚫 Вы заблокированы",ephemeral:true});
+    if(u.blocked) return i.reply({content:"🚫 Вы заблокированы",ephemeral:true});
 
     const menu=new StringSelectMenuBuilder()
       .setCustomId("act")
@@ -124,8 +121,9 @@ client.on(Events.InteractionCreate, async i=>{
     return i.reply({components:[new ActionRowBuilder().addComponents(menu)],ephemeral:true});
   }
 
-  // ===== ФОРМА =====
+  // ===== ФОРМА ЗАЯВКИ =====
   if(i.isStringSelectMenu() && i.customId==="act"){
+
     const type=i.values[0];
 
     const modal=new ModalBuilder().setCustomId(`form_${type}`).setTitle("Заявка");
@@ -138,8 +136,8 @@ client.on(Events.InteractionCreate, async i=>{
     return i.showModal(modal);
   }
 
-  // ===== ОТПРАВКА В ЛОГ =====
-  if(i.isModalSubmit()){
+  // ===== ОТПРАВКА ЛОГА =====
+  if(i.isModalSubmit() && i.customId.startsWith("form_")){
 
     const type=i.customId.split("_")[1];
     const reward=rewards[type];
@@ -149,14 +147,12 @@ client.on(Events.InteractionCreate, async i=>{
       .addFields(
         {name:"Игрок",value:i.user.tag},
         {name:"Активность",value:type},
-        {name:"Ссылка",value:i.fields.getTextInputValue("l")},
-        {name:"Ник",value:i.fields.getTextInputValue("n")},
         {name:"Награда",value:`🪙 ${reward}`}
       );
 
     const row=new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`ok_${i.user.id}_${reward}`).setLabel("Принять").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`no_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`deny_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId(`block_${i.user.id}`).setLabel("🚫").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`unblock_${i.user.id}`).setLabel("🔓").setStyle(ButtonStyle.Secondary)
     );
@@ -164,37 +160,73 @@ client.on(Events.InteractionCreate, async i=>{
     const log=await client.channels.fetch(LOG_CHANNEL);
     log.send({embeds:[embed],components:[row]});
 
-    return i.reply({content:"✅ Заявка отправлена",ephemeral:true});
+    return i.reply({content:"✅ Отправлено",ephemeral:true});
   }
 
-  // ===== КНОПКИ МОДЕРАЦИИ =====
-  if(i.isButton()){
 
-    const [action,uid,reward]=i.customId.split("_");
+  // ===== ПРИНЯТЬ =====
+  if(i.isButton() && i.customId.startsWith("ok_")){
+    const [_,uid,reward]=i.customId.split("_");
+
+    addCoins(uid,+reward);
+    const user=await client.users.fetch(uid);
+    user.send(`🪙 Вам начислено ${reward} баллов`);
+
+    return i.update({content:"✅ Принято",components:[]});
+  }
+
+
+  // ===== ОТКЛОНИТЬ / БЛОК = причина =====
+  if(i.isButton() && (i.customId.startsWith("deny_") || i.customId.startsWith("block_"))){
+
+    const action=i.customId;
+
+    const modal=new ModalBuilder()
+      .setCustomId(`reason_${action}`)
+      .setTitle("Укажите причину");
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("reason")
+          .setLabel("Причина")
+          .setStyle(TextInputStyle.Paragraph)
+      )
+    );
+
+    return i.showModal(modal);
+  }
+
+
+  // ===== ОБРАБОТКА ПРИЧИНЫ =====
+  if(i.isModalSubmit() && i.customId.startsWith("reason_")){
+
+    const raw=i.customId.replace("reason_","");
+    const [type,uid]=raw.split("_");
+    const reason=i.fields.getTextInputValue("reason");
+
     const user=await client.users.fetch(uid);
 
-    if(action==="ok"){
-      addCoins(uid,+reward);
-      user.send(`🪙 Вам начислено ${reward} баллов`);
-      return i.update({content:"✅ Принято",components:[]});
+    if(type==="deny"){
+      user.send(`❌ Заявка отклонена\nПричина: ${reason}`);
+      return i.reply({content:"❌ Отклонено",ephemeral:true});
     }
 
-    if(action==="no"){
-      user.send("❌ Ваша заявка отклонена");
-      return i.update({content:"❌ Отклонено",components:[]});
-    }
-
-    if(action==="block"){
+    if(type==="block"){
       setBlock(uid,1);
-      user.send("🚫 Вы были заблокированы");
-      return i.reply({content:"Игрок заблокирован",ephemeral:true});
+      user.send(`🚫 Вы заблокированы\nПричина: ${reason}`);
+      return i.reply({content:"🚫 Заблокирован",ephemeral:true});
     }
+  }
 
-    if(action==="unblock"){
-      setBlock(uid,0);
-      user.send("🔓 Вас разблокировали");
-      return i.reply({content:"Игрок разблокирован",ephemeral:true});
-    }
+
+  // ===== РАЗБЛОК =====
+  if(i.isButton() && i.customId.startsWith("unblock_")){
+    const uid=i.customId.split("_")[1];
+    setBlock(uid,0);
+    const user=await client.users.fetch(uid);
+    user.send("🔓 Вас разблокировали");
+    return i.reply({content:"Разблокирован",ephemeral:true});
   }
 
 });
