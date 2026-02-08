@@ -98,7 +98,8 @@ client.on("messageCreate", async (msg) => {
 
 client.on("interactionCreate", async (i) => {
 
-  /* ===== ЗАРАБОТАТЬ ===== */
+  /* ===================== ЗАРАБОТОК ===================== */
+
   if (i.customId === "earn") {
 
     if (db.blocked.includes(i.user.id))
@@ -148,8 +149,9 @@ client.on("interactionCreate", async (i) => {
     return i.showModal(modal);
   }
 
-  /* ===== ПОВЫШЕНИЕ ===== */
+  /* ===================== ПОВЫШЕНИЕ ===================== */
 
+  /* выбор ранга */
   if (i.customId === "upgrade") {
 
     const menu = new StringSelectMenuBuilder()
@@ -168,38 +170,10 @@ client.on("interactionCreate", async (i) => {
     });
   }
 
+  /* сразу открываем модалку */
   if (i.customId === "upgrade_select") {
 
     const type = i.values[0];
-
-    const prices = { "23": 98, "34": 289, "45": 0 };
-    const price = prices[type];
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`upgrade_confirm_${type}`)
-        .setLabel("Подтвердить")
-        .setStyle(ButtonStyle.Success),
-
-      new ButtonBuilder()
-        .setCustomId("upgrade_cancel")
-        .setLabel("Отмена")
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    return i.reply({
-      content:
-        price > 0
-          ? `⚠️ Потратить ${price} 💎 для повышения?`
-          : "⚠️ Повышение по решению ХР. Продолжить?",
-      components: [row],
-      ephemeral: true
-    });
-  }
-
-  if (i.customId.startsWith("upgrade_confirm_")) {
-
-    const type = i.customId.split("_")[2];
 
     const prices = { "23": 98, "34": 289, "45": 0 };
     const price = prices[type];
@@ -211,47 +185,64 @@ client.on("interactionCreate", async (i) => {
 
     const modal = new ModalBuilder()
       .setCustomId(`upgrade_modal_${type}`)
-      .setTitle("Заявка на повышение");
+      .setTitle("Привет, ты решил повыситься");
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("name").setLabel("Ник").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("nick")
+          .setLabel("Ник в игре + статик")
+          .setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("recoil").setLabel("Откат").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("recoil")
+          .setLabel("Откат (спешка/тяга)")
+          .setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId("proof").setLabel("Ссылка/скрин").setStyle(TextInputStyle.Short)
+        new TextInputBuilder()
+          .setCustomId("proof")
+          .setLabel("Ссылка/скрин сколько в фаме")
+          .setStyle(TextInputStyle.Short)
       )
     );
 
     return i.showModal(modal);
   }
 
-  /* ===== МОДАЛКИ ===== */
+  /* ===================== МОДАЛКИ ===================== */
+
   if (i.isModalSubmit()) {
 
-    /* ---- повышение ---- */
+    /* ----- повышение ----- */
     if (i.customId.startsWith("upgrade_modal_")) {
 
       const type = i.customId.split("_")[2];
+
+      const names = {
+        "23": "2 → 3",
+        "34": "3 → 4",
+        "45": "4 → 5-6"
+      };
 
       const embed = new EmbedBuilder()
         .setTitle("📈 Заявка на повышение")
         .setDescription(
           `**Игрок:** ${i.user}\n` +
-          `**Ник:** ${i.fields.getTextInputValue("name")}\n` +
+          `**Повышение:** ${names[type]}\n` +
+          `**Ник:** ${i.fields.getTextInputValue("nick")}\n` +
           `**Откат:** ${i.fields.getTextInputValue("recoil")}\n` +
-          `**Доказательства:** ${i.fields.getTextInputValue("proof")}`
+          `**Скрин/доказательство:** ${i.fields.getTextInputValue("proof")}`
         );
 
       const ch = await client.channels.fetch(VERIFY_CHANNEL);
       ch.send({ embeds: [embed] });
 
-      return i.reply({ content: "✅ Заявка отправлена", ephemeral: true });
+      return i.reply({ content: "✅ Заявка отправлена на проверку", ephemeral: true });
     }
 
-    /* ---- обычные заявки ---- */
+    /* ----- обычные задания ----- */
     const type = i.customId.replace("modal_", "");
 
     const rewards = {
@@ -286,5 +277,43 @@ client.on("interactionCreate", async (i) => {
     return i.reply({ content: "✅ Отправлено на проверку", ephemeral: true });
   }
 
+  /* ===================== ПРОЧЕЕ ===================== */
+
+  if (i.customId === "balance") {
+    return i.reply({
+      content: `💎 Баланс: ${getPoints(i.user.id)}`,
+      ephemeral: true
+    });
+  }
+
+  if (i.customId === "shop") {
+    return i.reply({
+      content: "🛒 Магазин\nСнять варн — 70 💎",
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("remove_warn")
+            .setLabel("Снять варн")
+            .setStyle(ButtonStyle.Primary)
+        )
+      ],
+      ephemeral: true
+    });
+  }
+
+  if (i.customId === "remove_warn") {
+
+    if (getPoints(i.user.id) < 70)
+      return i.reply({ content: "❌ Недостаточно баллов", ephemeral: true });
+
+    addPoints(i.user.id, -70);
+
+    return i.reply({
+      content: "✅ Варн снят, баллы списаны",
+      ephemeral: true
+    });
+  }
+
 });
+
 client.login(process.env.TOKEN);
