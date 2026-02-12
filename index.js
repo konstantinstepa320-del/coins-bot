@@ -69,7 +69,6 @@ client.on("messageCreate", async (msg) => {
 
   const embed = new EmbedBuilder()
     .setTitle("💎 Система баллов")
-    .setDescription("Выбери действие ниже")
     .setImage(IMAGE);
 
   const row = new ActionRowBuilder().addComponents(
@@ -102,7 +101,8 @@ client.on("messageCreate", async (msg) => {
 
 client.on("interactionCreate", async (i) => {
 
-  /* ===== БАЛАНС ===== */
+  /* ================= БАЛАНС ================= */
+
   if (i.customId === "balance") {
     return i.reply({
       content: `💎 Баланс: ${getPoints(i.user.id)}`,
@@ -110,67 +110,17 @@ client.on("interactionCreate", async (i) => {
     });
   }
 
-  /* ===== СНЯТЬ ВАРН ===== */
-  if (i.customId === "remove_warn") {
+  /* ================= ЗАРАБОТАТЬ ================= */
 
-    const embed = new EmbedBuilder()
-      .setTitle("⚠️ Заявка на снятие варна")
-      .setDescription(
-        `Игрок: ${i.user}\nБаланс: 💎 ${getPoints(i.user.id)}`
-      );
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`warn_accept_${i.user.id}`)
-        .setLabel("Принять")
-        .setStyle(ButtonStyle.Success),
-
-      new ButtonBuilder()
-        .setCustomId(`warn_reject_${i.user.id}`)
-        .setLabel("Отклонить")
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    const ch = await client.channels.fetch(VERIFY_CHANNEL);
-    ch.send({ embeds: [embed], components: [row] });
-
-    return i.reply({ content: "✅ Заявка отправлена", ephemeral: true });
-  }
-
-  /* ===== ПРИНЯТЬ ВАРН ===== */
-  if (i.customId.startsWith("warn_accept_")) {
-
-    if (!hasHigh(i.member))
-      return i.reply({ content: "❌ Нет доступа", ephemeral: true });
-
-    const id = i.customId.split("_")[2];
-
-    if (getPoints(id) < 70)
-      return i.reply({ content: "❌ Недостаточно баллов", ephemeral: true });
-
-    addPoints(id, -70);
-
-    return i.update({ content: "✅ Варн снят (-70 💎)", components: [] });
-  }
-
-  /* ===== ОТКЛОНИТЬ ===== */
-  if (i.customId.startsWith("warn_reject_")) {
-
-    if (!hasHigh(i.member))
-      return i.reply({ content: "❌ Нет доступа", ephemeral: true });
-
-    return i.update({ content: "❌ Отклонено", components: [] });
-  }
-
-  /* ===== ПОВЫШЕНИЕ ===== */
-  if (i.customId === "upgrade") {
+  if (i.customId === "earn") {
 
     const menu = new StringSelectMenuBuilder()
-      .setCustomId("upgrade_select")
-      .setPlaceholder("Выбери повышение")
+      .setCustomId("earn_select")
+      .setPlaceholder("Выбери активность")
       .addOptions([
-        { label: "2 → 3 (110 💎)", value: "23" },
-        { label: "2 → 4 (220 💎)", value: "24" }
+        { label: "Арена (+1 💎)", value: "1" },
+        { label: "Капт (+3 💎)", value: "3" },
+        { label: "МП (+2 💎)", value: "2" }
       ]);
 
     return i.reply({
@@ -179,40 +129,27 @@ client.on("interactionCreate", async (i) => {
     });
   }
 
-  /* ===== ВЫБОР РАНГА ===== */
-  if (i.customId === "upgrade_select") {
+  /* ===== выбор активности → модалка ===== */
 
-    const type = i.values[0];
-    const prices = { "23": 110, "24": 220 };
+  if (i.customId === "earn_select") {
 
-    const price = prices[type];
-
-    if (getPoints(i.user.id) < price)
-      return i.reply({ content: "❌ Недостаточно маккоинов", ephemeral: true });
-
-    addPoints(i.user.id, -price);
+    const reward = i.values[0];
 
     const modal = new ModalBuilder()
-      .setCustomId(`upgrade_modal_${type}`)
-      .setTitle("Заявка на повышение");
+      .setCustomId(`earn_modal_${reward}`)
+      .setTitle("Заявка на заработок");
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("nick")
-          .setLabel("Ник + статик")
-          .setStyle(TextInputStyle.Short)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("video")
-          .setLabel("Скрин/видео тяга/спешка")
+          .setLabel("Ник в игре")
           .setStyle(TextInputStyle.Short)
       ),
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("proof")
-          .setLabel("Ссылка/доказательства")
+          .setLabel("Ссылка/скрин")
           .setStyle(TextInputStyle.Short)
       )
     );
@@ -220,25 +157,84 @@ client.on("interactionCreate", async (i) => {
     return i.showModal(modal);
   }
 
-  /* ===== МОДАЛКА ПОВЫШЕНИЯ ===== */
-  if (i.isModalSubmit() && i.customId.startsWith("upgrade_modal_")) {
+  /* ===== отправка заявки ===== */
+
+  if (i.isModalSubmit() && i.customId.startsWith("earn_modal_")) {
+
+    const reward = i.customId.split("_")[2];
 
     const embed = new EmbedBuilder()
-      .setTitle("📈 Заявка на повышение")
+      .setTitle("💎 Заявка на заработок")
       .setDescription(
         `Игрок: ${i.user}\n` +
         `Ник: ${i.fields.getTextInputValue("nick")}\n` +
-        `Тяга/спешка: ${i.fields.getTextInputValue("video")}\n` +
-        `Доказательства: ${i.fields.getTextInputValue("proof")}\n` +
-        `Баланс после списания: 💎 ${getPoints(i.user.id)}`
+        `Награда: +${reward} 💎\n` +
+        `Доказательство: ${i.fields.getTextInputValue("proof")}`
       );
 
-    const ch = await client.channels.fetch(VERIFY_CHANNEL);
-    ch.send({ embeds: [embed] });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`earn_accept_${i.user.id}_${reward}`)
+        .setLabel("Принять")
+        .setStyle(ButtonStyle.Success),
 
-    return i.reply({ content: "✅ Заявка отправлена", ephemeral: true });
+      new ButtonBuilder()
+        .setCustomId(`earn_reject`)
+        .setLabel("Отклонить")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    const ch = await client.channels.fetch(VERIFY_CHANNEL);
+    ch.send({ embeds: [embed], components: [row] });
+
+    return i.reply({ content: "✅ Отправлено на проверку", ephemeral: true });
+  }
+
+  /* ===== принять ===== */
+
+  if (i.customId.startsWith("earn_accept_")) {
+
+    if (!hasHigh(i.member))
+      return i.reply({ content: "❌ Нет доступа", ephemeral: true });
+
+    const [, id, reward] = i.customId.split("_");
+
+    addPoints(id, Number(reward));
+
+    return i.update({ content: `✅ Начислено +${reward} 💎`, components: [] });
+  }
+
+  /* ===== отклонить ===== */
+
+  if (i.customId === "earn_reject") {
+    return i.update({ content: "❌ Отклонено", components: [] });
+  }
+
+  /* ================= СНЯТЬ ВАРН ================= */
+
+  if (i.customId === "remove_warn") {
+
+    const embed = new EmbedBuilder()
+      .setTitle("⚠️ Снятие варна")
+      .setDescription(`Игрок: ${i.user}\nБаланс: 💎 ${getPoints(i.user.id)}`);
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`warn_accept_${i.user.id}`)
+        .setLabel("Принять")
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId("warn_reject")
+        .setLabel("Отклонить")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    const ch = await client.channels.fetch(VERIFY_CHANNEL);
+    ch.send({ embeds: [embed], components: [row] });
+
+    return i.reply({ content: "✅ Отправлено", ephemeral: true });
   }
 
 });
-
 client.login(process.env.TOKEN);
