@@ -8,7 +8,8 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  StringSelectMenuBuilder
+  StringSelectMenuBuilder,
+  PermissionsBitField
 } = require("discord.js");
 
 const fs = require("fs");
@@ -16,9 +17,7 @@ const fs = require("fs");
 /* ========= НАСТРОЙКИ ========= */
 
 const VERIFY_CHANNEL = "1469477344161959957";
-
-const IMAGE =
-  "https://cdn.discordapp.com/attachments/737990746086441041/1469395625849257994/3330ded1-da51-47f9-a7d7-dee6d1bdc918.png";
+const HIGH_ROLE_NAME = "Hight"; // название роли
 
 /* ========= CLIENT ========= */
 
@@ -27,6 +26,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.DirectMessages
   ]
 });
@@ -55,6 +55,12 @@ function getPoints(id) {
   return db.points[id] || 0;
 }
 
+/* ========= ПРОВЕРКА РОЛИ ========= */
+
+function hasHighRole(member) {
+  return member.roles.cache.some(r => r.name === HIGH_ROLE_NAME);
+}
+
 /* ========= !menu ========= */
 
 client.on("messageCreate", async (msg) => {
@@ -63,10 +69,10 @@ client.on("messageCreate", async (msg) => {
 
   const embed = new EmbedBuilder()
     .setTitle("💎 Система баллов")
-    .setDescription("Нажми кнопку ниже чтобы заработать или открыть магазин")
-    .setImage(IMAGE);
+    .setDescription("Выбери действие ниже");
 
   const row = new ActionRowBuilder().addComponents(
+
     new ButtonBuilder()
       .setCustomId("earn")
       .setLabel("Заработать")
@@ -74,21 +80,15 @@ client.on("messageCreate", async (msg) => {
       .setStyle(ButtonStyle.Primary),
 
     new ButtonBuilder()
-      .setCustomId("shop")
-      .setLabel("Магазин")
-      .setStyle(ButtonStyle.Success),
-
-    new ButtonBuilder()
       .setCustomId("balance")
       .setLabel("Баланс")
       .setStyle(ButtonStyle.Secondary),
 
-    /* ===== НОВАЯ КНОПКА ===== */
     new ButtonBuilder()
-      .setCustomId("upgrade")
-      .setLabel("Повышение")
-      .setEmoji("📈")
-      .setStyle(ButtonStyle.Primary)
+      .setCustomId("remove_warn")
+      .setLabel("Снять варн")
+      .setEmoji("⚠️")
+      .setStyle(ButtonStyle.Danger)
   );
 
   msg.reply({ embeds: [embed], components: [row] });
@@ -98,12 +98,9 @@ client.on("messageCreate", async (msg) => {
 
 client.on("interactionCreate", async (i) => {
 
-  /* ===================== ЗАРАБОТОК ===================== */
+  /* ================= ЗАРАБОТАТЬ ================= */
 
   if (i.customId === "earn") {
-
-    if (db.blocked.includes(i.user.id))
-      return i.reply({ content: "🚫 Ты заблокирован", ephemeral: true });
 
     const menu = new StringSelectMenuBuilder()
       .setCustomId("task_select")
@@ -111,9 +108,7 @@ client.on("interactionCreate", async (i) => {
       .addOptions([
         { label: "Арена 💎 1", value: "arena" },
         { label: "Капт 💎 3", value: "capt" },
-        { label: "МП 💎 2", value: "mp" },
-        { label: "Тайник 💎 2", value: "tainik" },
-        { label: "Трасса 💎 1", value: "track" }
+        { label: "МП 💎 2", value: "mp" }
       ]);
 
     return i.reply({
@@ -122,196 +117,81 @@ client.on("interactionCreate", async (i) => {
     });
   }
 
-  /* ===== МОДАЛКА АКТИВНОСТИ ===== */
-  if (i.customId === "task_select") {
+  /* ================= БАЛАНС ================= */
 
-    const type = i.values[0];
-
-    const modal = new ModalBuilder()
-      .setCustomId(`modal_${type}`)
-      .setTitle("Отправить заявку");
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("link")
-          .setLabel("Ссылка на фото/скрин")
-          .setStyle(TextInputStyle.Short)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("nick")
-          .setLabel("Ваш ник")
-          .setStyle(TextInputStyle.Short)
-      )
-    );
-
-    return i.showModal(modal);
-  }
-
-  /* ===================== ПОВЫШЕНИЕ ===================== */
-
-  /* выбор ранга */
-  if (i.customId === "upgrade") {
-
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId("upgrade_select")
-      .setPlaceholder("Выбери повышение")
-      .addOptions([
-        { label: "2 → 3 (98 💎)", value: "23" },
-        { label: "3 → 4 (289 💎)", value: "34" },
-        { label: "4 → 5-6 (решение ХР)", value: "45" }
-      ]);
-
+  if (i.customId === "balance") {
     return i.reply({
-      content: "⚠️ Для повышения нужно быть в фаме минимум 2-3 дня",
-      components: [new ActionRowBuilder().addComponents(menu)],
+      content: `💎 Твой баланс: ${getPoints(i.user.id)}`,
       ephemeral: true
     });
   }
 
-  /* сразу открываем модалку */
-  if (i.customId === "upgrade_select") {
+  /* ================= СНЯТЬ ВАРН ================= */
 
-    const type = i.values[0];
-
-    const prices = { "23": 98, "34": 289, "45": 0 };
-    const price = prices[type];
-
-    if (price > 0 && getPoints(i.user.id) < price)
-      return i.reply({ content: "❌ Недостаточно маккоинов", ephemeral: true });
-
-    if (price > 0) addPoints(i.user.id, -price);
-
-    const modal = new ModalBuilder()
-      .setCustomId(`upgrade_modal_${type}`)
-      .setTitle("Привет, ты решил повыситься");
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("nick")
-          .setLabel("Ник в игре + статик")
-          .setStyle(TextInputStyle.Short)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("recoil")
-          .setLabel("Откат (спешка/тяга)")
-          .setStyle(TextInputStyle.Short)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("proof")
-          .setLabel("Ссылка/скрин сколько в фаме")
-          .setStyle(TextInputStyle.Short)
-      )
-    );
-
-    return i.showModal(modal);
-  }
-
-  /* ===================== МОДАЛКИ ===================== */
-
-  if (i.isModalSubmit()) {
-
-    /* ----- повышение ----- */
-    if (i.customId.startsWith("upgrade_modal_")) {
-
-      const type = i.customId.split("_")[2];
-
-      const names = {
-        "23": "2 → 3",
-        "34": "3 → 4",
-        "45": "4 → 5-6"
-      };
-
-      const embed = new EmbedBuilder()
-        .setTitle("📈 Заявка на повышение")
-        .setDescription(
-          `**Игрок:** ${i.user}\n` +
-          `**Повышение:** ${names[type]}\n` +
-          `**Ник:** ${i.fields.getTextInputValue("nick")}\n` +
-          `**Откат:** ${i.fields.getTextInputValue("recoil")}\n` +
-          `**Скрин/доказательство:** ${i.fields.getTextInputValue("proof")}`
-        );
-
-      const ch = await client.channels.fetch(VERIFY_CHANNEL);
-      ch.send({ embeds: [embed] });
-
-      return i.reply({ content: "✅ Заявка отправлена на проверку", ephemeral: true });
-    }
-
-    /* ----- обычные задания ----- */
-    const type = i.customId.replace("modal_", "");
-
-    const rewards = {
-      arena: 1,
-      capt: 3,
-      mp: 2,
-      tainik: 2,
-      track: 1
-    };
-
-    const reward = rewards[type];
+  if (i.customId === "remove_warn") {
 
     const embed = new EmbedBuilder()
-      .setTitle("📩 Новая заявка")
+      .setTitle("⚠️ Заявка на снятие варна")
       .setDescription(
-        `**Игрок:** ${i.user}\n` +
-        `**Ник:** ${i.fields.getTextInputValue("nick")}\n` +
-        `**Активность:** ${type}\n` +
-        `**Ссылка:** ${i.fields.getTextInputValue("link")}\n\n` +
-        `**Награда:** 💎 ${reward}`
+        `Игрок: ${i.user}\n` +
+        `Баланс: 💎 ${getPoints(i.user.id)}\n\n` +
+        `Стоимость: 70 💎`
       );
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`accept_${i.user.id}_${reward}`).setLabel("Принять").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`reject_${i.user.id}`).setLabel("Отклонить").setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId(`block_${i.user.id}`).setLabel("Блок").setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder()
+        .setCustomId(`warn_accept_${i.user.id}`)
+        .setLabel("Принять")
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId(`warn_reject_${i.user.id}`)
+        .setLabel("Отклонить")
+        .setStyle(ButtonStyle.Danger)
     );
 
     const ch = await client.channels.fetch(VERIFY_CHANNEL);
     ch.send({ embeds: [embed], components: [row] });
 
-    return i.reply({ content: "✅ Отправлено на проверку", ephemeral: true });
-  }
-
-  /* ===================== ПРОЧЕЕ ===================== */
-
-  if (i.customId === "balance") {
     return i.reply({
-      content: `💎 Баланс: ${getPoints(i.user.id)}`,
+      content: "✅ Заявка отправлена на проверку",
       ephemeral: true
     });
   }
 
-  if (i.customId === "shop") {
-    return i.reply({
-      content: "🛒 Магазин\nСнять варн — 70 💎",
-      components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("remove_warn")
-            .setLabel("Снять варн")
-            .setStyle(ButtonStyle.Primary)
-        )
-      ],
-      ephemeral: true
-    });
+  /* ================= ПРИНЯТЬ ВАРН ================= */
+
+  if (i.customId.startsWith("warn_accept_")) {
+
+    if (!hasHighRole(i.member))
+      return i.reply({ content: "❌ Нет доступа", ephemeral: true });
+
+    const id = i.customId.split("_")[2];
+
+    if (getPoints(id) < 70)
+      return i.reply({ content: "❌ У игрока недостаточно баллов", ephemeral: true });
+
+    addPoints(id, -70);
+
+    const user = await client.users.fetch(id);
+    user.send("✅ Варн снят (-70 💎)");
+
+    return i.update({ content: "✅ Одобрено", components: [] });
   }
 
-  if (i.customId === "remove_warn") {
+  /* ================= ОТКЛОНИТЬ ================= */
 
-    if (getPoints(i.user.id) < 70)
-      return i.reply({ content: "❌ Недостаточно баллов", ephemeral: true });
+  if (i.customId.startsWith("warn_reject_")) {
 
-    addPoints(i.user.id, -70);
+    if (!hasHighRole(i.member))
+      return i.reply({ content: "❌ Нет доступа", ephemeral: true });
 
-    return i.reply({
-      content: "✅ Варн снят, баллы списаны",
-      ephemeral: true
-    });
+    const id = i.customId.split("_")[2];
+
+    const user = await client.users.fetch(id);
+    user.send("❌ В снятии варна отказано");
+
+    return i.update({ content: "❌ Отклонено", components: [] });
   }
 
 });
