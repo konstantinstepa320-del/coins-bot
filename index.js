@@ -37,8 +37,9 @@ const client = new Client({
 
 let db = { points: {} };
 
-if (fs.existsSync("db.json"))
+if (fs.existsSync("db.json")) {
   db = JSON.parse(fs.readFileSync("db.json"));
+}
 
 function save() {
   fs.writeFileSync("db.json", JSON.stringify(db, null, 2));
@@ -115,11 +116,10 @@ client.on("messageCreate", async msg => {
 client.on("interactionCreate", async i => {
   try {
 
-    /* ================================================= */
-    /* ================= ЗАРАБОТОК ===================== */
-    /* ================================================= */
+    /* ================= ЗАРАБОТОК ================= */
 
     if (i.isButton() && i.customId === "earn_btn") {
+
       const menu = new StringSelectMenuBuilder()
         .setCustomId("earn_select")
         .setPlaceholder("Выбери активность")
@@ -130,7 +130,7 @@ client.on("interactionCreate", async i => {
           { label: "Трасса +2", value: "2" },
           { label: "Топ 1 арена +1", value: "1" },
           { label: "Развозка +1", value: "1" },
-          { label: "Снять варн (-79)", value: "-79" }
+          { label: "Снять варн (-79)", value: "minus79" }
         ]);
 
       return i.reply({
@@ -139,13 +139,13 @@ client.on("interactionCreate", async i => {
       });
     }
 
-    /* ===== выбор активности ===== */
-
     if (i.isStringSelectMenu() && i.customId === "earn_select") {
-      const reward = i.values[0];
+
+      let reward = i.values[0];
+      if (reward === "minus79") reward = -79;
 
       const modal = new ModalBuilder()
-        .setCustomId(`earn_modal_${reward}`)
+        .setCustomId(`earn_modal|${reward}`)
         .setTitle("Подтверждение");
 
       modal.addComponents(
@@ -161,13 +161,11 @@ client.on("interactionCreate", async i => {
       return i.showModal(modal);
     }
 
-    /* ===== отправка заявки ===== */
-
-    if (i.isModalSubmit() && i.customId.startsWith("earn_modal_")) {
+    if (i.isModalSubmit() && i.customId.startsWith("earn_modal|")) {
 
       await i.deferReply({ ephemeral: true });
 
-      const reward = i.customId.split("_")[2];
+      const reward = i.customId.split("|")[1];
 
       const embed = new EmbedBuilder()
         .setTitle("💎 Заявка на баллы")
@@ -175,7 +173,7 @@ client.on("interactionCreate", async i => {
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`earn_accept_${i.user.id}_${reward}`)
+          .setCustomId(`earn_accept|${i.user.id}|${reward}`)
           .setLabel("Принять")
           .setStyle(ButtonStyle.Success),
 
@@ -186,7 +184,6 @@ client.on("interactionCreate", async i => {
       );
 
       const ch = await client.channels.fetch(VERIFY_CHANNEL).catch(() => null);
-
       if (!ch) return i.editReply("❌ Канал не найден");
 
       await ch.send({ embeds: [embed], components: [row] });
@@ -194,14 +191,12 @@ client.on("interactionCreate", async i => {
       return i.editReply("✅ Отправлено на проверку");
     }
 
-    /* ===== принять ===== */
-
-    if (i.isButton() && i.customId.startsWith("earn_accept_")) {
+    if (i.isButton() && i.customId.startsWith("earn_accept|")) {
 
       if (!hasRole(i.member, ROLE_HIGH))
         return i.reply({ content: "❌ Нет прав", ephemeral: true });
 
-      const [, , id, reward] = i.customId.split("_");
+      const [, id, reward] = i.customId.split("|");
 
       addPoints(id, Number(reward));
 
@@ -211,8 +206,6 @@ client.on("interactionCreate", async i => {
       });
     }
 
-    /* ===== отклонить ===== */
-
     if (i.isButton() && i.customId === "earn_reject") {
       return i.update({
         content: "❌ Отклонено",
@@ -220,9 +213,7 @@ client.on("interactionCreate", async i => {
       });
     }
 
-    /* ================================================= */
-    /* ================= БАЛАНС ======================== */
-    /* ================================================= */
+    /* ================= БАЛАНС ================= */
 
     if (i.isButton() && i.customId === "balance_btn") {
       return i.reply({
@@ -231,14 +222,13 @@ client.on("interactionCreate", async i => {
       });
     }
 
-    /* ================================================= */
-    /* ================= ПОВЫШЕНИЕ ===================== */
-    /* ================================================= */
+    /* ================= ПОВЫШЕНИЕ ================= */
 
     if (i.isButton() && i.customId === "upgrade_btn") {
 
       const menu = new StringSelectMenuBuilder()
         .setCustomId("upgrade_select")
+        .setPlaceholder("Выбери повышение")
         .addOptions([
           { label: "2→3 (-110)", value: "-110" },
           { label: "2→4 (-220)", value: "-220" }
@@ -255,7 +245,7 @@ client.on("interactionCreate", async i => {
       const price = i.values[0];
 
       const modal = new ModalBuilder()
-        .setCustomId(`upgrade_modal_${price}`)
+        .setCustomId(`upgrade_modal|${price}`)
         .setTitle("Заявка на повышение");
 
       modal.addComponents(
@@ -279,7 +269,7 @@ client.on("interactionCreate", async i => {
     }
 
   } catch (err) {
-    console.error(err);
+    console.error("Ошибка:", err);
   }
 });
 
