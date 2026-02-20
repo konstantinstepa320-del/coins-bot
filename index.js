@@ -19,7 +19,14 @@ const VERIFY_CHANNEL = "1469477344161959957";
 
 const ROLE_LEADER_ID = "1056945517835341936"; // Leader
 const ROLE_HIGH_ID = "1295017864310423583";   // High
-const ROLE_REWARD_ID = "1295017864310423583"; // роль за одобрение (та же что High)
+const ROLE_REWARD_ID = "1295017864310423583"; // роль за одобрение
+
+// Роли повышения (замени на свои ID)
+const LEVELS = [
+  { id: "LEVEL_2_ID", points: 50 },
+  { id: "LEVEL_3_ID", points: 100 },
+  { id: "LEVEL_4_ID", points: 200 },
+];
 
 const IMAGE =
   "https://cdn.discordapp.com/attachments/737990746086441041/1469395625849257994/3330ded1-da51-47f9-a7d7-dee6d1bdc918.png";
@@ -107,6 +114,19 @@ client.on("messageCreate", async msg => {
   }
 });
 
+/* ================= ФУНКЦИЯ ПОВЫШЕНИЯ ================= */
+
+async function checkLevel(member) {
+  const points = getPoints(member.id);
+
+  for (let level of LEVELS) {
+    if (points >= level.points && !hasRole(member, level.id)) {
+      await member.roles.add(level.id).catch(() => null);
+      await member.send(`🎉 Поздравляем! Вы получили роль повышения!`).catch(() => null);
+    }
+  }
+}
+
 /* ================= INTERACTIONS ================= */
 
 client.on("interactionCreate", async i => {
@@ -115,7 +135,6 @@ client.on("interactionCreate", async i => {
     /* ===== ЗАРАБОТАТЬ ===== */
 
     if (i.isButton() && i.customId === "earn_btn") {
-
       const menu = new StringSelectMenuBuilder()
         .setCustomId("earn_select")
         .setPlaceholder("Выбери активность")
@@ -135,7 +154,6 @@ client.on("interactionCreate", async i => {
     /* ===== ВЫБОР АКТИВНОСТИ ===== */
 
     if (i.isStringSelectMenu() && i.customId === "earn_select") {
-
       const reward = i.values[0];
 
       const modal = new ModalBuilder()
@@ -158,8 +176,7 @@ client.on("interactionCreate", async i => {
     /* ===== ОТПРАВКА НА ПРОВЕРКУ ===== */
 
     if (i.isModalSubmit() && i.customId.startsWith("earn_")) {
-
-      const reward = i.customId.split("_")[1];
+      const reward = Number(i.customId.split("_")[1]);
 
       await i.deferReply({ ephemeral: true });
 
@@ -214,6 +231,9 @@ client.on("interactionCreate", async i => {
         `💎 Начислено: ${reward} баллов\n` +
         `📊 Новый баланс: ${getPoints(userId)}`
       ).catch(() => null);
+
+      /* проверка повышения */
+      await checkLevel(member);
 
       return i.update({
         content: "✅ Баллы начислены, роль выдана",
