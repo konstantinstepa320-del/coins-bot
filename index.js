@@ -15,9 +15,11 @@ const fs = require("fs");
 
 /* ================= НАСТРОЙКИ ================= */
 
-const VERIFY_CHANNEL = "1469477344161959957"; // канал проверки
-const ROLE_HIGH = "Hight";
-const ROLE_LEADER = "Leader";
+const VERIFY_CHANNEL = "1469477344161959957";
+
+const ROLE_LEADER_ID = "1056945517835341936"; // Leader
+const ROLE_HIGH_ID = "1295017864310423583";   // High
+const ROLE_REWARD_ID = "1295017864310423583"; // роль за одобрение (та же что High)
 
 const IMAGE =
   "https://cdn.discordapp.com/attachments/737990746086441041/1469395625849257994/3330ded1-da51-47f9-a7d7-dee6d1bdc918.png";
@@ -54,8 +56,8 @@ function getPoints(id) {
   return db.points[id] || 0;
 }
 
-function hasRole(member, roleName) {
-  return member.roles.cache.some(r => r.name === roleName);
+function hasRole(member, roleId) {
+  return member.roles.cache.has(roleId);
 }
 
 /* ================= READY ================= */
@@ -90,8 +92,9 @@ client.on("messageCreate", async msg => {
   }
 
   if (msg.content.startsWith("!give")) {
-    if (!hasRole(msg.member, ROLE_LEADER))
-      return msg.reply("❌ Только Leader может выдавать баллы");
+
+    if (!hasRole(msg.member, ROLE_LEADER_ID))
+      return msg.reply("❌ Нет прав (Leader)");
 
     const user = msg.mentions.users.first();
     const amount = parseInt(msg.content.split(" ")[2]);
@@ -109,7 +112,7 @@ client.on("messageCreate", async msg => {
 client.on("interactionCreate", async i => {
   try {
 
-    /* ===== КНОПКА ЗАРАБОТАТЬ ===== */
+    /* ===== ЗАРАБОТАТЬ ===== */
 
     if (i.isButton() && i.customId === "earn_btn") {
 
@@ -123,9 +126,10 @@ client.on("interactionCreate", async i => {
           { label: "Снять варн (-79)", value: "-79" }
         ]);
 
-      const row = new ActionRowBuilder().addComponents(menu);
-
-      return i.reply({ components: [row], ephemeral: true });
+      return i.reply({
+        components: [new ActionRowBuilder().addComponents(menu)],
+        ephemeral: true
+      });
     }
 
     /* ===== ВЫБОР АКТИВНОСТИ ===== */
@@ -138,14 +142,14 @@ client.on("interactionCreate", async i => {
         .setCustomId(`earn_${reward}`)
         .setTitle("Подтверждение");
 
-      const proofInput = new TextInputBuilder()
+      const input = new TextInputBuilder()
         .setCustomId("proof")
         .setLabel("Ссылка / доказательство")
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
       modal.addComponents(
-        new ActionRowBuilder().addComponents(proofInput)
+        new ActionRowBuilder().addComponents(input)
       );
 
       return i.showModal(modal);
@@ -160,7 +164,7 @@ client.on("interactionCreate", async i => {
       await i.deferReply({ ephemeral: true });
 
       const channel = await client.channels.fetch(VERIFY_CHANNEL).catch(() => null);
-      if (!channel) return i.editReply("❌ Канал проверки не найден");
+      if (!channel) return i.editReply("❌ Канал не найден");
 
       const embed = new EmbedBuilder()
         .setTitle("💎 Заявка на баллы")
@@ -187,17 +191,32 @@ client.on("interactionCreate", async i => {
 
     if (i.isButton() && i.customId.startsWith("accept_")) {
 
-      if (!hasRole(i.member, ROLE_HIGH))
-        return i.reply({ content: "❌ Нет прав", ephemeral: true });
+      if (!hasRole(i.member, ROLE_HIGH_ID))
+        return i.reply({ content: "❌ Нет прав (High)", ephemeral: true });
 
       const parts = i.customId.split("_");
       const userId = parts[1];
       const reward = Number(parts[2]);
 
+      const member = await i.guild.members.fetch(userId).catch(() => null);
+      if (!member)
+        return i.reply({ content: "❌ Пользователь не найден", ephemeral: true });
+
+      /* начисляем баллы */
       addPoints(userId, reward);
 
+      /* выдаем роль */
+      await member.roles.add(ROLE_REWARD_ID).catch(() => null);
+
+      /* отправляем ЛС */
+      await member.send(
+        `🎉 Ваша заявка одобрена!\n\n` +
+        `💎 Начислено: ${reward} баллов\n` +
+        `📊 Новый баланс: ${getPoints(userId)}`
+      ).catch(() => null);
+
       return i.update({
-        content: "✅ Баллы начислены",
+        content: "✅ Баллы начислены, роль выдана",
         components: []
       });
     }
