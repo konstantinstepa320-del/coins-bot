@@ -82,13 +82,14 @@ client.on("interactionCreate", async i => {
         .setCustomId("earn_select")
         .setPlaceholder("Выбери активность")
         .addOptions([
-          { label: "Заправка авто +2", value: "2" },
+          { label: "Заправка машины +2", value: "2" },
           { label: "Капт +3", value: "3" },
           { label: "Развозка Грина +1", value: "1" },
-          { label: "Топ 1 Арена +2", value: "2" },
-          { label: "Тайник +1", value: "1" },
-          { label: "Выезд на трассу +2", value: "2" }
+          { label: "Топ 1 на арене +2", value: "2" },
+          { label: "Тайники +3", value: "3" },
+          { label: "Выезд на трассу +1", value: "1" }
         ]);
+
       return i.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
     }
 
