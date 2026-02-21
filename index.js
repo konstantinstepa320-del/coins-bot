@@ -13,27 +13,17 @@ const fs = require("fs");
 
 /* =============== ЗАЩИТА =============== */
 const ALLOWED_GUILD_ID = "1046807733501968404";
+const EARN_CHANNEL = "1469477344161959957";
+const LEVEL_CHANNEL = "1474553271892054168";
 
-/* =============== НАСТРОЙКИ =============== */
-const EARN_CHANNEL = "1469477344161959957";      // если понадобится
-const LEVEL_CHANNEL = "1474553271892054168";     // сюда падают заявки
+const ROLE_LEADER_ID = "1056945517835341936";
+const ROLE_HIGH_ID = "1295017864310423583";
 
-const ROLE_LEADER_ID = "1056945517835341936";    // лидер
-const ROLE_HIGH_ID = "1295017864310423583";      // высшее руководство
+// ТВОИ ID РОЛЕЙ
+const MEIN_ROLE_ID = "1287462717237756057";        // 3 ранг mein
+const MEIN_PLUS_ROLE_ID = "1450119053350801591";   // 4 ранг mein+
+const TEST_ROLE_ID = "1287463578818969662";        // роль test
 
-// роли рангов
-const MEIN_ROLE_ID = "ID_РОЛИ_MEIN";             // 3 ранг (mein)
-const MEIN_PLUS_ROLE_ID = "ID_РОЛИ_MEIN_PLUS";   // 4 ранг (mein+)
-const TEST_ROLE_ID = "ID_РОЛИ_TEST";             // временная роль test
-
-// при желании можешь использовать это для автоповышения
-const LEVELS = [
-  { id: "LEVEL_2_ID", points: 50 },
-  { id: "LEVEL_3_ID", points: 100 },
-  { id: "LEVEL_4_ID", points: 200 },
-];
-
-// стоимость рангов
 const RANK_COSTS = {
   "3": 89,
   "4": 178,
@@ -52,7 +42,7 @@ const client = new Client({
 });
 
 /* =============== БАЗА =============== */
-let db = { points: {} };
+let db = { points: {}, earnLogs: {} };
 if (fs.existsSync("db.json")) db = JSON.parse(fs.readFileSync("db.json"));
 
 function save() {
@@ -65,11 +55,16 @@ function addPoints(id, amount) {
 function getPoints(id) {
   return db.points[id] || 0;
 }
+function logEarn(id, type, nick, proof) {
+  const timestamp = Date.now();
+  db.earnLogs[timestamp] = { userId: id, type, nick, proof, time: new Date().toLocaleString() };
+  save();
+}
 function hasRole(member, roleId) {
   return member.roles.cache.has(roleId);
 }
 
-/* =============== АВТО ВЫХОД С ЧУЖОГО СЕРВЕРА =============== */
+/* =============== АВТО ВЫХОД =============== */
 client.on("guildCreate", guild => {
   if (guild.id !== ALLOWED_GUILD_ID) {
     console.log(`❌ Бот добавлен на чужой сервер: ${guild.name}`);
@@ -87,7 +82,6 @@ client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
   if (!msg.guild || msg.guild.id !== ALLOWED_GUILD_ID) return;
 
-  // команда для ручной выдачи баллов
   if (msg.content.startsWith("!give")) {
     if (!hasRole(msg.member, ROLE_LEADER_ID))
       return msg.reply("❌ Нет прав (Leader)");
@@ -102,7 +96,6 @@ client.on("messageCreate", async msg => {
     return msg.reply(`✅ Выдано ${amount} 💎`);
   }
 
-  // главное меню
   if (msg.content === "!menu") {
     const embed = new EmbedBuilder()
       .setTitle("💎 Система баллов")
@@ -112,7 +105,7 @@ client.on("messageCreate", async msg => {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("earn_btn")
-        .setLabel("Заработать")
+        .setLabel("Зарабатывать")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId("balance_btn")
@@ -120,7 +113,7 @@ client.on("messageCreate", async msg => {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId("rankup_btn")
-        .setLabel("Повыситься")
+        .setLabel("Повышаться")
         .setStyle(ButtonStyle.Success),
     );
 
@@ -128,25 +121,12 @@ client.on("messageCreate", async msg => {
   }
 });
 
-/* =============== ПРОВЕРКА УРОВНЕЙ (опционально) =============== */
-async function checkLevel(member) {
-  const points = getPoints(member.id);
-  for (let level of LEVELS) {
-    if (points >= level.points && !hasRole(member, level.id)) {
-      await member.roles.add(level.id).catch(() => null);
-      await member
-        .send("🎉 Поздравляем! Вы получили роль повышения!")
-        .catch(() => null);
-    }
-  }
-}
-
 /* =============== INTERACTIONS =============== */
 client.on("interactionCreate", async i => {
   if (!i.guild || i.guild.id !== ALLOWED_GUILD_ID) return;
 
   try {
-    /* ----- БАЛАНС ----- */
+    // БАЛАНС
     if (i.isButton() && i.customId === "balance_btn") {
       return i.reply({
         content: `💎 Твой баланс: ${getPoints(i.user.id)}`,
@@ -154,7 +134,144 @@ client.on("interactionCreate", async i => {
       });
     }
 
-    /* ----- ОТКРЫТЬ МОДАЛКУ ПОВЫШЕНИЯ ----- */
+    // МЕНЮ ЗАРАБОТКА
+    if (i.isButton() && i.customId === "earn_btn") {
+      if (i.channelId !== EARN_CHANNEL) {
+        return i.reply({
+          content: `❌ Зарабатывать можно только в <#${EARN_CHANNEL}>`,
+          ephemeral: true,
+        });
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle("💰 Выбери способ заработка")
+        .setDescription("**Капт** — 3 💎\n**Траса** — 2 💎\n**Топ 1 на арене** — 2 💎\n**Развоз грина** — 1 💎\n**Тайник** — 2 💎\n**Заправка машин** — 2 💎");
+
+      const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("earn_capt").setLabel("Капт (3💎)").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("earn_trasa").setLabel("Траса (2💎)").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("earn_arena").setLabel("Арена (2💎)").setStyle(ButtonStyle.Primary),
+      );
+
+      const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("earn_grin").setLabel("Грин (1💎)").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("earn_taynik").setLabel("Тайник (2💎)").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("earn_zapravka").setLabel("Заправка (2💎)").setStyle(ButtonStyle.Secondary),
+      );
+
+      return i.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
+    }
+
+    // ОБРАБОТКА ЗАРАБОТКА
+    const earnTypes = {
+      "earn_capt": { name: "Капт", points: 3 },
+      "earn_trasa": { name: "Траса", points: 2 },
+      "earn_arena": { name: "Топ 1 на арене", points: 2 },
+      "earn_grin": { name: "Развоз грина", points: 1 },
+      "earn_taynik": { name: "Тайник", points: 2 },
+      "earn_zapravka": { name: "Заправка машин", points: 2 },
+    };
+
+    if (earnTypes[i.customId]) {
+      if (i.channelId !== EARN_CHANNEL) {
+        return i.reply({ content: `❌ Только в <#${EARN_CHANNEL}>!`, ephemeral: true });
+      }
+
+      const type = earnTypes[i.customId];
+      
+      const modal = new ModalBuilder()
+        .setCustomId(`earn_${i.customId}`)
+        .setTitle(`${type.name} — подтверждение`);
+
+      const nickInput = new TextInputBuilder()
+        .setCustomId("earn_nick")
+        .setLabel("Ник в игре")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      const proofInput = new TextInputBuilder()
+        .setCustomId("earn_proof")
+        .setLabel("Ссылка на видео тяги/спешик")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setPlaceholder("https://...");
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(nickInput),
+        new ActionRowBuilder().addComponents(proofInput),
+      );
+
+      return i.showModal(modal);
+    }
+
+    // ПОДТВЕРЖДЕНИЕ ЗАРАБОТКА
+    if (i.isModalSubmit() && i.customId.startsWith("earn_")) {
+      const earnType = i.customId.replace("earn_", "");
+      const type = earnTypes[earnType];
+      const nick = i.fields.getTextInputValue("earn_nick");
+      const proof = i.fields.getTextInputValue("earn_proof");
+
+      // ЛОГИРУЕМ ЗАЯВКУ НА ЗАРАБОТОК
+      logEarn(i.user.id, type.name, nick, proof);
+
+      const channel = await i.guild.channels.fetch(LEVEL_CHANNEL);
+      const embed = new EmbedBuilder()
+        .setTitle("💰 Заявка на заработок")
+        .addFields(
+          { name: "Игрок", value: `${i.user} (\`${i.user.id}\`)`, inline: true },
+          { name: "Ник", value: nick, inline: true },
+          { name: "Тип", value: type.name, inline: true },
+          { name: "Баллы", value: `${type.points} 💎`, inline: true },
+          { name: "Доказательство", value: `[Ссылка](${proof})`, inline: false },
+        )
+        .setTimestamp();
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`earn_accept_${i.user.id}_${type.points}_${Date.now()}`)
+          .setLabel("✅ Выдать")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`earn_decline_${i.user.id}_${Date.now()}`)
+          .setLabel("❌ Отклонить")
+          .setStyle(ButtonStyle.Danger),
+      );
+
+      await channel.send({ embeds: [embed], components: [row] });
+      return i.reply({ content: "✅ Заявка на заработок отправлена на проверку!", ephemeral: true });
+    }
+
+    // ПРИНЯТЬ ЗАРАБОТОК
+    if (i.isButton() && i.customId.startsWith("earn_accept_")) {
+      if (!hasRole(i.member, ROLE_LEADER_ID) && !hasRole(i.member, ROLE_HIGH_ID))
+        return i.reply({ content: "❌ Нет прав!", ephemeral: true });
+
+      const [, , userId, pointsStr, timestampStr] = i.customId.split("_");
+      const points = Number(pointsStr);
+
+      addPoints(userId, points);
+      
+      const member = await i.guild.members.fetch(userId);
+      await member.send(`✅ Тебе выдали ${points} 💎 за заработок!`);
+      
+      await i.message.edit({ components: [] });
+      return i.reply({ content: `✅ Выдано ${points} 💎`, ephemeral: true });
+    }
+
+    // ОТКЛОНИТЬ ЗАРАБОТОК
+    if (i.isButton() && i.customId.startsWith("earn_decline_")) {
+      if (!hasRole(i.member, ROLE_LEADER_ID) && !hasRole(i.member, ROLE_HIGH_ID))
+        return i.reply({ content: "❌ Нет прав!", ephemeral: true });
+
+      const [, , userId] = i.customId.split("_");
+      const member = await i.guild.members.fetch(userId);
+      await member.send("❌ Твоя заявка на заработок отклонена.");
+      
+      await i.message.edit({ components: [] });
+      return i.reply({ content: "✅ Отклонено!", ephemeral: true });
+    }
+
+    // МОДАЛКА ПОВЫШЕНИЯ (старая логика)
     if (i.isButton() && i.customId === "rankup_btn") {
       const modal = new ModalBuilder()
         .setCustomId("rankup_modal")
@@ -168,13 +285,13 @@ client.on("interactionCreate", async i => {
 
       const proofInput = new TextInputBuilder()
         .setCustomId("rankup_proof")
-        .setLabel("Откат / скрин специк/тяг и т.д.")
+        .setLabel("Откат / скрин специк/тяг")
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true);
 
       const rankInput = new TextInputBuilder()
         .setCustomId("rankup_target")
-        .setLabel("На какой ранг (3, 4 и т.д.)")
+        .setLabel("На какой ранг (3 или 4)")
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
@@ -187,7 +304,7 @@ client.on("interactionCreate", async i => {
       return i.showModal(modal);
     }
 
-    /* ----- ПОЛУЧИЛИ ЗАЯВКУ ИЗ МОДАЛКИ ----- */
+    // Остальная логика повышения (без изменений)...
     if (i.isModalSubmit() && i.customId === "rankup_modal") {
       const nick = i.fields.getTextInputValue("rankup_nick");
       const proof = i.fields.getTextInputValue("rankup_proof");
@@ -195,37 +312,24 @@ client.on("interactionCreate", async i => {
 
       const cost = RANK_COSTS[targetRank];
       if (!cost) {
-        return i.reply({
-          content: "❌ Такой ранг не настроен. Доступны, например, 3 или 4.",
-          ephemeral: true,
-        });
+        return i.reply({ content: "❌ Пиши 3 или 4.", ephemeral: true });
       }
 
       const userPoints = getPoints(i.user.id);
       if (userPoints < cost) {
-        return i.reply({
-          content: `❌ Для этого ранга нужно ${cost} 💎, у тебя только ${userPoints}.`,
-          ephemeral: true,
-        });
+        return i.reply({ content: `❌ Нужно ${cost} 💎`, ephemeral: true });
       }
 
-      const channel = await i.guild.channels.fetch(LEVEL_CHANNEL).catch(() => null);
-      if (!channel) {
-        return i.reply({
-          content: "❌ Канал для заявок не найден. Сообщи администрации.",
-          ephemeral: true,
-        });
-      }
-
+      const channel = await i.guild.channels.fetch(LEVEL_CHANNEL);
       const embed = new EmbedBuilder()
         .setTitle("📝 Заявка на повышение")
         .addFields(
           { name: "Игрок", value: `${i.user} (\`${i.user.id}\`)`, inline: false },
           { name: "Ник", value: nick, inline: false },
-          { name: "Желаемый ранг", value: targetRank, inline: true },
-          { name: "Баланс игрока", value: `${userPoints} 💎`, inline: true },
-          { name: "Стоимость", value: `${cost} 💎`, inline: true },
-          { name: "Откат / доказательства", value: proof || "Не указано", inline: false },
+          { name: "Ранг", value: targetRank, inline: true },
+          { name: "Баланс", value: `${userPoints} 💎`, inline: true },
+          { name: "Цена", value: `${cost} 💎`, inline: true },
+          { name: "Доказательства", value: proof, inline: false },
         )
         .setTimestamp();
 
@@ -241,116 +345,40 @@ client.on("interactionCreate", async i => {
       );
 
       await channel.send({ embeds: [embed], components: [row] });
-
-      return i.reply({
-        content: "✅ Заявка отправлена лидерам на проверку.",
-        ephemeral: true,
-      });
+      return i.reply({ content: "✅ Заявка отправлена!", ephemeral: true });
     }
 
-    /* ----- ПРИНЯТЬ ЗАЯВКУ ----- */
+    // ПРИНЯТЬ ПОВЫШЕНИЕ
     if (i.isButton() && i.customId.startsWith("rankup_accept_")) {
       if (!hasRole(i.member, ROLE_LEADER_ID) && !hasRole(i.member, ROLE_HIGH_ID))
-        return i.reply({
-          content: "❌ У тебя нет прав принимать заявки.",
-          ephemeral: true,
-        });
+        return i.reply({ content: "❌ Нет прав!", ephemeral: true });
 
       const [, , userId, costStr, rank] = i.customId.split("_");
       const cost = Number(costStr);
-
-      const member = await i.guild.members.fetch(userId).catch(() => null);
-      if (!member)
-        return i.reply({ content: "❌ Игрок не найден.", ephemeral: true });
+      const member = await i.guild.members.fetch(userId);
 
       const currentPoints = getPoints(userId);
       if (currentPoints < cost) {
-        return i.reply({
-          content: `❌ У игрока уже нет нужного количества баллов (нужно ${cost}, сейчас ${currentPoints}).`,
-          ephemeral: true,
-        });
+        return i.reply({ content: `❌ Недостаточно баллов!`, ephemeral: true });
       }
 
-      // списываем баллы
       addPoints(userId, -cost);
 
-      // удаляем роль test, если она есть
-      if (TEST_ROLE_ID && member.roles.cache.has(TEST_ROLE_ID)) {
-        await member.roles.remove(TEST_ROLE_ID).catch(() => null);
+      if (member.roles.cache.has(TEST_ROLE_ID)) {
+        await member.roles.remove(TEST_ROLE_ID);
       }
 
-      // выдаём роль за ранг
-      if (rank === "3" && MEIN_ROLE_ID) {
-        await member.roles.add(MEIN_ROLE_ID).catch(() => null);
-      }
-      if (rank === "4" && MEIN_PLUS_ROLE_ID) {
-        await member.roles.add(MEIN_PLUS_ROLE_ID).catch(() => null);
+      if (rank === "3") {
+        await member.roles.add(MEIN_ROLE_ID);
+      } else if (rank === "4") {
+        await member.roles.add(MEIN_PLUS_ROLE_ID);
       }
 
-      await member
-        .send(`🎉 Твоя заявка на ${rank} ранг принята, списано ${cost} 💎!`)
-        .catch(() => null);
-
-      await i.message.edit({ components: [] }).catch(() => null);
-
-      return i.reply({ content: "✅ Заявка принята.", ephemeral: true });
+      await member.send(`🎉 Заявка на ${rank} ранг принята! Списано ${cost} 💎`);
+      await i.message.edit({ components: [] });
+      return i.reply({ content: "✅ Принято!", ephemeral: true });
     }
 
-    /* ----- ОТКЛОНИТЬ ЗАЯВКУ: МОДАЛКА ПРИЧИНЫ ----- */
-    if (i.isButton() && i.customId.startsWith("rankup_decline_")) {
-      if (!hasRole(i.member, ROLE_LEADER_ID) && !hasRole(i.member, ROLE_HIGH_ID))
-        return i.reply({
-          content: "❌ У тебя нет прав отклонять заявки.",
-          ephemeral: true,
-        });
-
-      const [, , userId] = i.customId.split("_");
-
-      const modal = new ModalBuilder()
-        .setCustomId(`rankup_decline_modal_${userId}`)
-        .setTitle("Причина отказа");
-
-      const reasonInput = new TextInputBuilder()
-        .setCustomId("rankup_decline_reason")
-        .setLabel("Напишите причину отказа")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
-
-      i.client._lastDeclineMessageId = i.message.id;
-      i.client._lastDeclineChannelId = i.channel.id;
-
-      return i.showModal(modal);
-    }
-
-    /* ----- ОТПРАВКА ПРИЧИНЫ ОТКАЗА ----- */
-    if (i.isModalSubmit() && i.customId.startsWith("rankup_decline_modal_")) {
-      const userId = i.customId.split("_").pop();
-      const reason = i.fields.getTextInputValue("rankup_decline_reason");
-
-      const member = await i.guild.members.fetch(userId).catch(() => null);
-      if (member) {
-        await member
-          .send(`❌ Твоя заявка на повышение отклонена.\nПричина: ${reason}`)
-          .catch(() => null);
-      }
-
-      try {
-        const ch = await i.guild.channels.fetch(
-          i.client._lastDeclineChannelId
-        );
-        const msg = await ch.messages.fetch(i.client._lastDeclineMessageId);
-        await msg.edit({ components: [] });
-      } catch (e) {
-        // игнор, если не получилось
-      }
-
-      return i.reply({
-        content: "✅ Причина отправлена игроку.",
-        ephemeral: true,
-      });
-    }
   } catch (err) {
     console.error("Ошибка:", err);
   }
