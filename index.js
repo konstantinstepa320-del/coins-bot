@@ -191,10 +191,10 @@ client.on("interactionCreate", async i => {
 
       const proofInput = new TextInputBuilder()
         .setCustomId("earn_proof")
-        .setLabel("Ссылка на видео тяги/спешик")
-        .setStyle(TextInputStyle.Short)
+        .setLabel("Скрин доказательства")  // ✅ ИСПРАВЛЕНО
+        .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
-        .setPlaceholder("https://...");
+        .setPlaceholder("Скриншот с ником и доказательством");  // ✅ ИСПРАВЛЕНО
 
       modal.addComponents(
         new ActionRowBuilder().addComponents(nickInput),
@@ -211,7 +211,6 @@ client.on("interactionCreate", async i => {
       const nick = i.fields.getTextInputValue("earn_nick");
       const proof = i.fields.getTextInputValue("earn_proof");
 
-      // ЛОГИРУЕМ ЗАЯВКУ НА ЗАРАБОТОК
       logEarn(i.user.id, type.name, nick, proof);
 
       const channel = await i.guild.channels.fetch(LEVEL_CHANNEL);
@@ -222,7 +221,7 @@ client.on("interactionCreate", async i => {
           { name: "Ник", value: nick, inline: true },
           { name: "Тип", value: type.name, inline: true },
           { name: "Баллы", value: `${type.points} 💎`, inline: true },
-          { name: "Доказательство", value: `[Ссылка](${proof})`, inline: false },
+          { name: "Скрин доказательства", value: proof, inline: false },  // ✅ ИСПРАВЛЕНО
         )
         .setTimestamp();
 
@@ -271,7 +270,7 @@ client.on("interactionCreate", async i => {
       return i.reply({ content: "✅ Отклонено!", ephemeral: true });
     }
 
-    // МОДАЛКА ПОВЫШЕНИЯ (старая логика)
+    // МОДАЛКА ПОВЫШЕНИЯ
     if (i.isButton() && i.customId === "rankup_btn") {
       const modal = new ModalBuilder()
         .setCustomId("rankup_modal")
@@ -304,7 +303,7 @@ client.on("interactionCreate", async i => {
       return i.showModal(modal);
     }
 
-    // Остальная логика повышения (без изменений)...
+    // ОБРАБОТКА ПОВЫШЕНИЯ
     if (i.isModalSubmit() && i.customId === "rankup_modal") {
       const nick = i.fields.getTextInputValue("rankup_nick");
       const proof = i.fields.getTextInputValue("rankup_proof");
@@ -377,6 +376,19 @@ client.on("interactionCreate", async i => {
       await member.send(`🎉 Заявка на ${rank} ранг принята! Списано ${cost} 💎`);
       await i.message.edit({ components: [] });
       return i.reply({ content: "✅ Принято!", ephemeral: true });
+    }
+
+    // ОТКЛОНИТЬ ПОВЫШЕНИЕ
+    if (i.isButton() && i.customId.startsWith("rankup_decline_")) {
+      if (!hasRole(i.member, ROLE_LEADER_ID) && !hasRole(i.member, ROLE_HIGH_ID))
+        return i.reply({ content: "❌ Нет прав!", ephemeral: true });
+
+      const [, , userId] = i.customId.split("_");
+      const member = await i.guild.members.fetch(userId);
+      await member.send("❌ Твоя заявка на повышение отклонена.");
+      
+      await i.message.edit({ components: [] });
+      return i.reply({ content: "✅ Отклонено!", ephemeral: true });
     }
 
   } catch (err) {
