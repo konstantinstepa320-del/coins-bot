@@ -1,27 +1,13 @@
-const {
-  Client,
-  GatewayIntentBits,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  StringSelectMenuBuilder
-} = require("discord.js");
-
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require("discord.js");
 const fs = require("fs");
 
 /* ================= НАСТРОЙКИ ================= */
-
-const EARN_CHANNEL = "1469477344161959957";      // канал для заявок на заработок
-const LEVEL_CHANNEL = "1474553271892054168";     // канал для заявок на повышение
-
+const VERIFY_CHANNEL = "1469477344161959957";
 const ROLE_LEADER_ID = "1056945517835341936"; // Leader
-const ROLE_HIGH_ID = "1295017864310423583";   // High
+const ROLE_HIGH_ID = "1295017864310423583"; // High
 const ROLE_REWARD_ID = "1295017864310423583"; // роль за одобрение
 
+// Роли повышения (замени на свои ID)
 const LEVELS = [
   { id: "LEVEL_2_ID", points: 50 },
   { id: "LEVEL_3_ID", points: 100 },
@@ -31,7 +17,6 @@ const LEVELS = [
 const IMAGE = "https://cdn.discordapp.com/attachments/737990746086441041/1469395625849257994/3330ded1-da51-47f9-a7d7-dee6d1bdc918.png";
 
 /* ================= CLIENT ================= */
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -42,9 +27,10 @@ const client = new Client({
 });
 
 /* ================= БАЗА ================= */
-
 let db = { points: {} };
-if (fs.existsSync("db.json")) db = JSON.parse(fs.readFileSync("db.json"));
+if (fs.existsSync("db.json")) {
+  db = JSON.parse(fs.readFileSync("db.json"));
+}
 
 function save() {
   fs.writeFileSync("db.json", JSON.stringify(db, null, 2));
@@ -64,11 +50,11 @@ function hasRole(member, roleId) {
 }
 
 /* ================= READY ================= */
-
-client.once("ready", () => console.log(`✅ ${client.user.tag} запущен`));
+client.once("ready", () => {
+  console.log(`✅ ${client.user.tag} запущен`);
+});
 
 /* ================= КОМАНДЫ ================= */
-
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
@@ -82,6 +68,7 @@ client.on("messageCreate", async msg => {
         .setCustomId("earn_btn")
         .setLabel("Заработать")
         .setStyle(ButtonStyle.Primary),
+
       new ButtonBuilder()
         .setCustomId("balance_btn")
         .setLabel("Баланс")
@@ -92,10 +79,14 @@ client.on("messageCreate", async msg => {
   }
 
   if (msg.content.startsWith("!give")) {
-    if (!hasRole(msg.member, ROLE_LEADER_ID)) return msg.reply("❌ Нет прав (Leader)");
+    if (!hasRole(msg.member, ROLE_LEADER_ID))
+      return msg.reply("❌ Нет прав (Leader)");
+
     const user = msg.mentions.users.first();
     const amount = parseInt(msg.content.split(" ")[2]);
-    if (!user || isNaN(amount)) return msg.reply("Используй: !give @user 50");
+
+    if (!user || isNaN(amount))
+      return msg.reply("Используй: !give @user 50");
 
     addPoints(user.id, amount);
     return msg.reply(`✅ Выдано ${amount} 💎`);
@@ -103,9 +94,9 @@ client.on("messageCreate", async msg => {
 });
 
 /* ================= ФУНКЦИЯ ПОВЫШЕНИЯ ================= */
-
 async function checkLevel(member) {
   const points = getPoints(member.id);
+
   for (let level of LEVELS) {
     if (points >= level.points && !hasRole(member, level.id)) {
       await member.roles.add(level.id).catch(() => null);
@@ -115,7 +106,6 @@ async function checkLevel(member) {
 }
 
 /* ================= INTERACTIONS ================= */
-
 client.on("interactionCreate", async i => {
   try {
     /* ===== ЗАРАБОТАТЬ ===== */
@@ -127,10 +117,7 @@ client.on("interactionCreate", async i => {
           { label: "Тайник +2", value: "2" },
           { label: "Капт +3", value: "3" },
           { label: "Заправка +1", value: "1" },
-          { label: "Снять варн -79", value: "-79" },
-          { label: "Развозка Грина +1", value: "1" },
-          { label: "Топ 1 Арена +2", value: "2" },
-          { label: "Выезд на трассу +2", value: "2" }
+          { label: "Снять варн (-79)", value: "-79" }
         ]);
 
       return i.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
@@ -149,7 +136,10 @@ client.on("interactionCreate", async i => {
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(input)
+      );
+
       return i.showModal(modal);
     }
 
@@ -158,20 +148,21 @@ client.on("interactionCreate", async i => {
       const reward = Number(i.customId.split("_")[1]);
       await i.deferReply({ ephemeral: true });
 
-      const channel = await client.channels.fetch(EARN_CHANNEL).catch(() => null);
+      const channel = await client.channels.fetch(VERIFY_CHANNEL).catch(() => null);
       if (!channel) return i.editReply("❌ Канал не найден");
 
       const embed = new EmbedBuilder()
         .setTitle("💎 Заявка на баллы")
-        .setDescription(`Игрок: ${i.user}\nБаллы: ${reward}\nДоказательство: ${i.fields.getTextInputValue("proof")}`);
+        .setDescription(`Игрок: ${i.user}\nБаллы: ${reward}`);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`accept_${i.user.id}_${reward}`)
           .setLabel("Принять")
           .setStyle(ButtonStyle.Success),
+
         new ButtonBuilder()
-          .setCustomId(`reject_${i.user.id}`)
+          .setCustomId("reject_btn")
           .setLabel("Отклонить")
           .setStyle(ButtonStyle.Danger)
       );
@@ -182,48 +173,39 @@ client.on("interactionCreate", async i => {
 
     /* ===== ПРИНЯТЬ ===== */
     if (i.isButton() && i.customId.startsWith("accept_")) {
-      if (!hasRole(i.member, ROLE_HIGH_ID)) return i.reply({ content: "❌ Нет прав (High)", ephemeral: true });
+      if (!hasRole(i.member, ROLE_HIGH_ID))
+        return i.reply({ content: "❌ Нет прав (High)", ephemeral: true });
 
-      const [_, userId, reward] = i.customId.split("_");
+      const parts = i.customId.split("_");
+      const userId = parts[1];
+      const reward = Number(parts[2]);
+
       const member = await i.guild.members.fetch(userId).catch(() => null);
-      if (!member) return i.reply({ content: "❌ Пользователь не найден", ephemeral: true });
+      if (!member)
+        return i.reply({ content: "❌ Пользователь не найден", ephemeral: true });
 
-      addPoints(userId, Number(reward));
+      /* начисляем баллы */
+      addPoints(userId, reward);
+
+      /* выдаем роль */
       await member.roles.add(ROLE_REWARD_ID).catch(() => null);
-      await member.send(`🎉 Ваша заявка одобрена!\n💎 Начислено: ${reward}\n📊 Новый баланс: ${getPoints(userId)}`).catch(() => null);
+
+      /* отправляем ЛС */
+      await member.send(
+        `🎉 Ваша заявка одобрена!\n\n` +
+        `💎 Начислено: ${reward} баллов\n` +
+        `📊 Новый баланс: ${getPoints(userId)}`
+      ).catch(() => null);
+
+      /* проверка повышения */
       await checkLevel(member);
 
       return i.update({ content: "✅ Баллы начислены, роль выдана", components: [] });
     }
 
-    /* ===== ОТКЛОНИТЬ С ПРИЧИНОЙ ===== */
-    if (i.isButton() && i.customId.startsWith("reject_")) {
-      if (!hasRole(i.member, ROLE_HIGH_ID)) return i.reply({ content: "❌ Нет прав (High)", ephemeral: true });
-
-      const userId = i.customId.split("_")[1];
-
-      const modal = new ModalBuilder()
-        .setCustomId(`reject_modal_${userId}`)
-        .setTitle("Причина отклонения");
-
-      const input = new TextInputBuilder()
-        .setCustomId("reason")
-        .setLabel("Причина отклонения")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-      return i.showModal(modal);
-    }
-
-    if (i.isModalSubmit() && i.customId.startsWith("reject_modal_")) {
-      const userId = i.customId.split("_")[2];
-      const reason = i.fields.getTextInputValue("reason");
-
-      const member = await i.guild.members.fetch(userId).catch(() => null);
-      if (member) await member.send(`❌ Ваша заявка отклонена.\nПричина: ${reason}`).catch(() => null);
-
-      return i.update({ content: `❌ Заявка отклонена\nПричина: ${reason}`, components: [] });
+    /* ===== ОТКЛОНИТЬ ===== */
+    if (i.isButton() && i.customId === "reject_btn") {
+      return i.update({ content: "❌ Заявка отклонена", components: [] });
     }
 
     /* ===== БАЛАНС ===== */
