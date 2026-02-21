@@ -1,13 +1,12 @@
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require("discord.js");
 const fs = require("fs");
 
-/* ================= НАСТРОЙКИ ================= */
-const EARN_CHANNEL = "1469477344161959957";    // канал для заработка
-const LEVEL_CHANNEL = "1474553271892054168";   // канал для повышения
+const EARN_CHANNEL = "1469477344161959957";  
+const LEVEL_CHANNEL = "1474553271892054168";  
 
-const ROLE_LEADER_ID = "1056945517835341936"; // Leader
-const ROLE_HIGH_ID = "1295017864310423583";   // High
-const ROLE_REWARD_ID = "1295017864310423583"; // роль за одобрение
+const ROLE_LEADER_ID = "1056945517835341936";
+const ROLE_HIGH_ID = "1295017864310423583";  
+const ROLE_REWARD_ID = "1295017864310423583";  
 
 const LEVELS = [
   { id: "LEVEL_2_ID", points: 50 },
@@ -17,29 +16,19 @@ const LEVELS = [
 
 const IMAGE = "https://cdn.discordapp.com/attachments/737990746086441041/1469395625849257994/3330ded1-da51-47f9-a7d7-dee6d1bdc918.png";
 
-/* ================= CLIENT ================= */
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers]
 });
 
-/* ================= БАЗА ================= */
 let db = { points: {} };
 if (fs.existsSync("db.json")) db = JSON.parse(fs.readFileSync("db.json"));
-
 function save() { fs.writeFileSync("db.json", JSON.stringify(db, null, 2)); }
 function addPoints(id, amount) { db.points[id] = (db.points[id] || 0) + amount; save(); }
 function getPoints(id) { return db.points[id] || 0; }
 function hasRole(member, roleId) { return member.roles.cache.has(roleId); }
 
-/* ================= READY ================= */
 client.once("ready", () => console.log(`✅ ${client.user.tag} запущен`));
 
-/* ================= КОМАНДЫ ================= */
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
@@ -62,21 +51,18 @@ client.on("messageCreate", async msg => {
   }
 });
 
-/* ================= ФУНКЦИЯ ПОВЫШЕНИЯ ================= */
 async function checkLevel(member) {
   const points = getPoints(member.id);
   for (let level of LEVELS) {
     if (points >= level.points && !hasRole(member, level.id)) {
       await member.roles.add(level.id).catch(() => null);
-      await member.send(`🎉 Поздравляем! Вы получили роль повышения!`).catch(() => null);
+      await member.send("🎉 Поздравляем! Вы получили роль повышения!").catch(() => null);
     }
   }
 }
 
-/* ================= INTERACTIONS ================= */
 client.on("interactionCreate", async i => {
   try {
-    /* ===== ЗАРАБОТАТЬ ===== */
     if (i.isButton() && i.customId === "earn_btn") {
       const menu = new StringSelectMenuBuilder()
         .setCustomId("earn_select")
@@ -89,11 +75,9 @@ client.on("interactionCreate", async i => {
           { label: "Тайники +3", value: "3" },
           { label: "Выезд на трассу +1", value: "1" }
         ]);
-
       return i.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
     }
 
-    /* ===== ВЫБОР АКТИВНОСТИ ===== */
     if (i.isStringSelectMenu() && i.customId === "earn_select") {
       const reward = i.values[0];
       const modal = new ModalBuilder().setCustomId(`earn_${reward}`).setTitle("Подтверждение");
@@ -106,7 +90,6 @@ client.on("interactionCreate", async i => {
       return i.showModal(modal);
     }
 
-    /* ===== ОТПРАВКА НА ПРОВЕРКУ ===== */
     if (i.isModalSubmit() && i.customId.startsWith("earn_")) {
       const reward = Number(i.customId.split("_")[1]);
       await i.deferReply({ ephemeral: true });
@@ -126,7 +109,6 @@ client.on("interactionCreate", async i => {
       return i.editReply("✅ Отправлено на проверку");
     }
 
-    /* ===== ПРИНЯТЬ ===== */
     if (i.isButton() && i.customId.startsWith("accept_")) {
       if (!hasRole(i.member, ROLE_HIGH_ID)) return i.reply({ content: "❌ Нет прав (High)", ephemeral: true });
       const [_, userId, reward] = i.customId.split("_");
@@ -137,23 +119,15 @@ client.on("interactionCreate", async i => {
       await member.roles.add(ROLE_REWARD_ID).catch(() => null);
       await member.send(`🎉 Ваша заявка одобрена!\n💎 Начислено: ${reward}\n📊 Новый баланс: ${getPoints(userId)}`).catch(() => null);
       await checkLevel(member);
-
       return i.update({ content: "✅ Баллы начислены, роль выдана", components: [] });
     }
 
-    /* ===== ОТКЛОНИТЬ С ПРИЧИНОЙ ===== */
     if (i.isButton() && i.customId.startsWith("reject_")) {
       if (!hasRole(i.member, ROLE_HIGH_ID)) return i.reply({ content: "❌ Нет прав (High)", ephemeral: true });
 
       const userId = i.customId.split("_")[1];
       const modal = new ModalBuilder().setCustomId(`reject_modal_${userId}`).setTitle("Причина отклонения");
-
-      const input = new TextInputBuilder()
-        .setCustomId("reason")
-        .setLabel("Причина отклонения")
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
-
+      const input = new TextInputBuilder().setCustomId("reason").setLabel("Причина отклонения").setStyle(TextInputStyle.Paragraph).setRequired(true);
       modal.addComponents(new ActionRowBuilder().addComponents(input));
       return i.showModal(modal);
     }
@@ -166,7 +140,6 @@ client.on("interactionCreate", async i => {
       return i.update({ content: `❌ Заявка отклонена\nПричина: ${reason}`, components: [] });
     }
 
-    /* ===== БАЛАНС ===== */
     if (i.isButton() && i.customId === "balance_btn") {
       return i.reply({ content: `💎 Твой баланс: ${getPoints(i.user.id)}`, ephemeral: true });
     }
@@ -176,5 +149,4 @@ client.on("interactionCreate", async i => {
   }
 });
 
-/* ================= LOGIN ================= */
 client.login(process.env.TOKEN);
