@@ -119,6 +119,7 @@ client.on("interactionCreate", async i => {
   if (!i.guild || i.guild.id !== ALLOWED_GUILD_ID) return;
 
   try {
+
     if (i.isButton() && i.customId === "balance_btn") {
       return i.reply({
         content: `💎 Твой баланс: ${getPoints(i.user.id)}`,
@@ -289,6 +290,21 @@ client.on("interactionCreate", async i => {
       const targetRank = i.fields.getTextInputValue("rankup_target");
 
       const cost = RANK_COSTS[targetRank];
+      const balance = getPoints(i.user.id);
+
+      if (!cost) {
+        return i.reply({
+          content: "❌ Можно выбрать только ранг 3 или 4",
+          ephemeral: true,
+        });
+      }
+
+      if (balance < cost) {
+        return i.reply({
+          content: `❌ Недостаточно баллов!\nНужно: ${cost} 💎\nУ тебя: ${balance} 💎`,
+          ephemeral: true,
+        });
+      }
 
       const channel = await i.guild.channels.fetch(LEVEL_CHANNEL);
 
